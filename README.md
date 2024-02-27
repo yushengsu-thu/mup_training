@@ -1,2 +1,2 @@
-# -P-training-
+# muP_training
 Explore the µP
