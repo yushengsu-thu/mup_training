@@ -57,7 +57,8 @@ for idx_i in range(len(dir_list)):
         for id_ in range(int(pt_j.shape[-1])):
             kld = F.pairwise_distance(pt_i[:,id_//scale_ratio], pt_j[:,id_])
             print("Layer:", id_, "Dis_mean:", float(kld))
-        print("=========================")
+            #print(float(kld))
+        #print("=========================")
 
 
         #std
@@ -79,8 +80,9 @@ for idx_i in range(len(dir_list)):
         #dict_ = dict()
         print("----------std-----------")
         for id_ in range(int(pt_j.shape[-1])):
-            kld = F.pairwise_distance(pt_i[:,id_//scale_ratio], pt_j[:,id_])
-            print("Layer:", id_, "Dis_std:", float(kld))
+            std = F.pairwise_distance(pt_i[:,id_//scale_ratio], pt_j[:,id_])
+            print("Layer:", id_, "Dis_std:", float(std))
+            #print(float(std))
         print("=========================")
 
 
