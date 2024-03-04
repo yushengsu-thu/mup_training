@@ -16,6 +16,7 @@ from transformers import AutoModel, AutoTokenizer
 import argparse
 import os
 from multiprocessing import cpu_count
+import shutil
 
 # split data, 1:9
 # add ppl
@@ -152,14 +153,15 @@ class Trainer:
             #print("=======how to self-implement training: figure it out=========")
             #refer: https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=nql_1ER53oCf
             #refer: https://gist.github.com/NaxAlpha/3d69432aa81a9ab47dee70c7a16ad8a5
-            output = self.model(x)
-            print(output)
-            exit()
+
             z = self.model(x).logits
             y = y.reshape(-1)
             z = z.view(-1, z.shape[-1])
             loss = F.cross_entropy(z, y)
         self.scaler.scale(loss / self.grad).backward()
+        # loss is calculated using CrossEntropyLoss which averages over valid labels
+        # N.B. the model only calculates loss over trg_len - 1 labels, because it internally shifts the labels
+        # to the left by 1.
         return loss
 
         '''
@@ -188,12 +190,20 @@ class Trainer:
     def train(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
+        target_log = "../log/"+str(self.learning_rate)
+        if os.path.isdir(target_log+"/wandb"):
+            # delete dir
+            shutil.rmtree(target_log+"/wandb")
+        #create a new one
+        os.makedirs(target_log+"/wandb")
+
+
         wandb.init(
                project=PROJECT,
                entity=ENTITY,
                #notes=socket.gethostname(),
                name="training_log",
-               dir="../",
+               dir=target_log,
                job_type="fine-tuning",
                reinit=True
         )
@@ -218,16 +228,34 @@ class Trainer:
                 self.opt.zero_grad()
 
             '''
-            if i % 1000 == 0:
-                temp_model = copy.deepcopy(self.model).half()
+            if i % 1 == 0:
+                #hg tokens: https://huggingface.co/settings/tokens
+                #temp_model = copy.deepcopy(self.model).half()
+                temp_model = copy.deepcopy(self.model)
                 temp_model.save_pretrained(
-                    "<your-hf-repo-id>",
+                    #"<your-hf-repo-id>",
+                    #"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",
                     push_to_hub=True,
-                    max_shard_size="500MB",
+                    #max_shard_size="500MB",
                 )
                 del temp_model
                 torch.cuda.empty_cache()
             '''
+            if i % 1000 == 0:
+                temp_model = copy.deepcopy(self.model)
+                temp_model.save_pretrained(
+                    save_directory = self.target_dir+"/"+str(self.learning_rate)+"/"+str(i)
+                )
+                del temp_model
+                torch.cuda.empty_cache()
+
+        #Final ckpt
+        temp_model = copy.deepcopy(self.model)
+        temp_model.save_pretrained(
+            save_directory = self.target_dir+"/"+str(self.learning_rate)+"/"+str(i)
+        )
+        del temp_model
+        torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
@@ -237,9 +265,9 @@ if __name__ == "__main__":
     parser.add_argument('--learning_rate', type=float, default=3e-5, help='learning_rate')
     parser.add_argument('--weight_decay', type=float, default=0, help='weight_decay')
     parser.add_argument('--batch_size', type=int, default=16, help='batch_size')
-    parser.add_argument('--target_dir', type=str, default="../checkpoint/pythia-70m", help='target_dir')
+    parser.add_argument('--target_dir', type=str, default=os.getcwd()+"/../checkpoint/pythia-70m", help='target_dir')
 
-    parser.add_argument('--cache_dir', type=str, default=os.getcwd()+"/../cache", help='target_dir')
+    parser.add_argument('--cache_dir', type=str, default=os.getcwd()+"/../cache", help='cache_dir')
     parser.add_argument('--cpus', type=int, default = cpu_count(), help='cpus')
 
     parser.add_argument('--device', type=str, default = "cuda", help='device')
