@@ -1,2 +1,4 @@
 cache
 git_push.sh
+wandb
+checkpoint/*
