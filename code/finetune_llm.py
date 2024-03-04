@@ -47,44 +47,41 @@ class DatasetWrapper(IterableDataset):
 
     def __iter__(self):
 
-        dataset = load_dataset("Open-Orca/SlimOrca-Dedup", split="train", cache_dir=self.cache_dir)
+        '''
+        buffer = []
+        for sample in load_dataset(
+            "EleutherAI/the_pile_deduplicated",
+            # "togethercomputer/RedPajama-Data-1T",
+            #name="all",
+            split="train",
+            streaming=True,
+            cache_dir=self.cache_dir
+        ).shuffle(buffer_size=10_000):
+            buffer += self.tokenizer(sample["text"])["input_ids"]
+            buffer += [self.tokenizer.eos_token_id]
+            while len(buffer) > self.max_tokens:
+                yield torch.tensor(buffer[: self.max_tokens])
+                buffer = buffer[self.max_tokens :]
+        '''
+
+
+        dataset = load_dataset("Open-Orca/SlimOrca-Dedup",
+                split="train",
+                cache_dir=self.cache_dir
+        )
         train_size = int(0.9 * len(dataset))
         # 90%: train, 10%: test
         train_dataset = dataset.select(range(train_size))
         valid_dataset = dataset.select(range(train_size, len(dataset)))
-
+        self.tokenizer.pad_token = self.tokenizer.eos_token
         for sample in train_dataset:
-            input_ = self.tokenizer(sample['conversations'][0]["value"]+"\n"+sample['conversations'][1]["value"])
-            input_tokens = input_["input_ids"]
-            input_att = input_["attention_mask"]
-
-            output_ = self.tokenizer(sample['conversations'][2]["value"])["input_ids"]
-            output_tokens = output_["input_ids"]
-            output_att = output_["attention_mask"]
-
-            if len(input_tokens) >= self.max_tokens:
-                input_tokens = input_tokens[:self.max_tokens]
-                input_tokens = torch.tensor(input_tokens)
-
-                input_att = input_att[:self.max_tokens]
-                input_att = torch.tensor(input_att)
-            else:
-                input_tokens = torch.tensor( [self.tokenizer.eos_token_id] * (self.max_tokens - len(input_tokens)) + input_tokens)
-
-                input_att = torch.tensor( [self.tokenizer.eos_token_id] * (self.max_tokens - len(input_att)) + input_att)
-
-            if len(output_tokens) >= self.max_tokens:
-                output_tokens = output_tokens[:self.max_tokens]
-                output_tokens = torch.tensor(output_tokens)
-
-                output_att = output_att[:self.max_tokens]
-                output_att = torch.tensor(output_att)
-            else:
-                output_tokens = torch.tensor([self.tokenizer.eos_token_id] * (self.max_tokens - len(output_tokens)) + output_tokens)
-
-                output_att = torch.tensor([self.tokenizer.eos_token_id] * (self.max_tokens - len(output_att)) + output_att)
-
-            yield {"input": {"tokens": input_tokens, "att": input_att}, "output": {"tokens": output_tokens, "att": output_att}}
+            instruction_system = sample['conversations'][0]["value"]
+            instruction_human = sample['conversations'][1]["value"]
+            response = sample['conversations'][2]["value"]
+            input_ = instruction_system + "\n" + instruction_human + "\n" + response
+            tokens = self.tokenizer(input_, return_tensors='pt', max_length=self.max_tokens, padding="max_length", truncation=True).input_ids
+            tokens = tokens.reshape(tokens.shape[0]*tokens.shape[1])
+            yield tokens
 
 
 
@@ -101,13 +98,15 @@ class Trainer:
         self.batch_size = parser.batch_size
         self.cache_dir = parser.cache_dir
         self.cpus = parser.cpus
-
         self.device = parser.device
-
         self.target_dir = parser.target_dir
 
-
         self.dataset = DatasetWrapper(self.max_tokens, self.cache_dir)
+        #tensor([  50,   27,  187,  ..., 5471, 1422, 1912])
+        #torch.Size([1024])
+
+        #tensor([[1394,  403,  271,  ...,    0,    0,    0]])
+        #torch.Size([1, 1024])
 
         self.tokenizer = self.dataset.tokenizer
         self.loader = DataLoader(
@@ -116,11 +115,10 @@ class Trainer:
             num_workers=self.cpus,
         )
 
-
         self.scaler = torch.cuda.amp.GradScaler()
         self.model = model = GPTNeoXForCausalLM.from_pretrained(
             self.llm,
-            #cache = self.cache_dir,
+            cache_dir = self.cache_dir,
         ).to(self.device)
 
 
@@ -148,18 +146,44 @@ class Trainer:
         print("Trainable params:", trainable_params)
 
     def train_step(self, batch):
-        #batch = batch.cuda()
-        x = batch['input'].to(self.device)
-        y = batch['output'].to(self.device)
-        #batch = batch.to(self.device)
-        #x, y = batch[:, :-1], batch[:, 1:]
+        batch = batch.to(self.device)
+        x, y = batch[:, :-1], batch[:, 1:]
         with torch.autocast(device_type="cuda", enabled=True):
+            #print("=======how to self-implement training: figure it out=========")
+            #refer: https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=nql_1ER53oCf
+            #refer: https://gist.github.com/NaxAlpha/3d69432aa81a9ab47dee70c7a16ad8a5
+            output = self.model(x)
+            print(output)
+            exit()
             z = self.model(x).logits
             y = y.reshape(-1)
             z = z.view(-1, z.shape[-1])
             loss = F.cross_entropy(z, y)
         self.scaler.scale(loss / self.grad).backward()
         return loss
+
+        '''
+        batch = batch.to(self.device)
+        print("=======")
+        print(batch.size)
+        print(len(batch))
+        print("=======")
+        x, y = batch[:, :-1], batch[:, 1:]
+        print(x.shape)
+        print("-----")
+        print(y.shape)
+        print("-----")
+        exit()
+        with torch.autocast(device_type="cuda", enabled=True):
+            z = self.model(x).logits
+            y = y.reshape(-1)
+            #print(z.shape) #torch.Size([1, 1023, 50304])
+            #print(y.shape) #torch.Size([1023])
+            z = z.view(-1, z.shape[-1])
+            loss = F.cross_entropy(z, y)
+        self.scaler.scale(loss / self.grad).backward()
+        return loss
+        '''
 
     def train(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
@@ -178,22 +202,17 @@ class Trainer:
         self.opt.zero_grad()
 
         for i, batch in enumerate(prog):
-
-            print(batch["input"])
-            exit()
-
             self.step = i + 1
-
             loss = self.train_step(batch)
             prog.set_description(f"loss: {loss.item():.3f}")
+            '''
             wandb.log(
                 {
                     "loss": loss.item(),
                 },
                 step=i,
             )
-            print(1111111)
-            exit()
+            '''
 
             if (i + 1) % self.grad == 0:
                 self.scaler.step(self.opt)
@@ -230,8 +249,6 @@ if __name__ == "__main__":
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     args = parser.parse_args()
-
-
 
     trainer = Trainer(args)
     trainer.train()
