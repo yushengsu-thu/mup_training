@@ -205,14 +205,12 @@ class Trainer:
             self.step = i + 1
             loss = self.train_step(batch)
             prog.set_description(f"loss: {loss.item():.3f}")
-            '''
             wandb.log(
                 {
                     "loss": loss.item(),
                 },
                 step=i,
             )
-            '''
 
             if (i + 1) % self.grad == 0:
                 self.scaler.step(self.opt)
