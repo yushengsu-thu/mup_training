@@ -20,6 +20,9 @@ from multiprocessing import cpu_count
 # split data, 1:9
 # add ppl
 
+PROJECT="mup"
+ENTITY="mbzuai-llm"
+
 
 def _attn_wrapper(self, query, key, value, attention_mask=None, head_mask=None):
     assert attention_mask is None and head_mask is None, "Not implemented"
@@ -51,22 +54,37 @@ class DatasetWrapper(IterableDataset):
         valid_dataset = dataset.select(range(train_size, len(dataset)))
 
         for sample in train_dataset:
-            input_ = self.tokenizer(sample['conversations'][0]["value"]+"\n"+sample['conversations'][1]["value"])["input_ids"]
+            input_ = self.tokenizer(sample['conversations'][0]["value"]+"\n"+sample['conversations'][1]["value"])
+            input_tokens = input_["input_ids"]
+            input_att = input_["attention_mask"]
+
             output_ = self.tokenizer(sample['conversations'][2]["value"])["input_ids"]
+            output_tokens = output_["input_ids"]
+            output_att = output_["attention_mask"]
 
-            if len(input_) >= self.max_tokens:
-                input_ = input_[:self.max_tokens]
-                input_ = torch.tensor(input_)
+            if len(input_tokens) >= self.max_tokens:
+                input_tokens = input_tokens[:self.max_tokens]
+                input_tokens = torch.tensor(input_tokens)
+
+                input_att = input_att[:self.max_tokens]
+                input_att = torch.tensor(input_att)
             else:
-                input_ = torch.tensor( [self.tokenizer.eos_token_id] * (self.max_tokens - len(input_)) + input_)
+                input_tokens = torch.tensor( [self.tokenizer.eos_token_id] * (self.max_tokens - len(input_tokens)) + input_tokens)
 
-            if len(output_) >= self.max_tokens:
-                output_ = output_[:self.max_tokens]
-                output_ = torch.tensor(output_)
+                input_att = torch.tensor( [self.tokenizer.eos_token_id] * (self.max_tokens - len(input_att)) + input_att)
+
+            if len(output_tokens) >= self.max_tokens:
+                output_tokens = output_tokens[:self.max_tokens]
+                output_tokens = torch.tensor(output_tokens)
+
+                output_att = output_att[:self.max_tokens]
+                output_att = torch.tensor(output_att)
             else:
-                output_ = torch.tensor([self.tokenizer.eos_token_id] * (self.max_tokens - len(output_)) + output_)
+                output_tokens = torch.tensor([self.tokenizer.eos_token_id] * (self.max_tokens - len(output_tokens)) + output_tokens)
 
-            yield {"input": input_, "output": output_}
+                output_att = torch.tensor([self.tokenizer.eos_token_id] * (self.max_tokens - len(output_att)) + output_att)
+
+            yield {"input": {"tokens": input_tokens, "att": input_att}, "output": {"tokens": output_tokens, "att": output_att}}
 
 
 
@@ -147,19 +165,22 @@ class Trainer:
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
         wandb.init(
-               project="mup",
-               entity="mbzuai-llm",
+               project=PROJECT,
+               entity=ENTITY,
                #notes=socket.gethostname(),
                name="training_log",
                dir="../",
                job_type="fine-tuning",
-               reinit=True)
-
+               reinit=True
+        )
 
         prog = tqdm(self.loader)
         self.opt.zero_grad()
 
         for i, batch in enumerate(prog):
+
+            print(batch["input"])
+            exit()
 
             self.step = i + 1
 
