@@ -1,7 +1,7 @@
 
 LLM="pythia-70m"
 
-CUDA_VISIBLE_DEVICES=0 python3 ../code/finetune_llm.py \
+CUDA_VISIBLE_DEVICES=2 python3 ../code/finetune_llm.py \
     --llm "EleutherAI/"$LLM \
     --max_tokens 4096 \
     --learning_rate 6.4e-4 \
