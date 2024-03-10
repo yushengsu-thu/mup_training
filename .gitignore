@@ -1,4 +1,4 @@
-cache/*
 git_push.sh
-wandb
+log/*/*
+cache/*
 checkpoint/*
