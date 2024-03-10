@@ -158,7 +158,7 @@ for idx, ax in enumerate(axs):
     #ax.bar(X_axis, Zboys, 0.4, label = 'Boys')
 
     ax.set_xticks(X_axis)
-    ax.set_xticklabels(X)
+    #ax.set_xticklabels(X)
     if idx == 0:
         ax.set_title("Number of Students in each group")
         ax.set_ylabel("Number of Students")
