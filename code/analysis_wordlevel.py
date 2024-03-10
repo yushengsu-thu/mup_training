@@ -153,9 +153,9 @@ fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
 
 for idx, ax in enumerate(axs):
     #ax.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
-    ax.bar(X_axis, Ygirls, 0.4, label = 'Girls')
+    ax.bar(X_axis-0.5, Ygirls, 0.4, label = 'Girls')
     #ax.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
-    ax.bar(X_axis, Zboys, 0.4, label = 'Boys')
+    ax.bar(X_axis-0.5, Zboys, 0.4, label = 'Boys')
 
     ax.set_xticks(X_axis)
     ax.set_xticklabels(X)
