@@ -43,7 +43,7 @@ x2_series = np.random.uniform(-1, 1, size=(3, sentence_length))  # Three series 
 
 # Define bin edges for alignment
 #bins = np.arange(0, 12) - 0.5
-bins = np.linspace(-1, sentence_length, sentence_length+1)
+bins = np.linspace(-1, 1, sentence_length+1)
 
 # Create histograms for the three series of X1 and X2
 fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
