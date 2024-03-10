@@ -60,7 +60,7 @@ axs[-1].set_xticks(np.arange(0, sentence_length))  # Set x-ticks to be at intege
 axs[-1].set_xlabel('Value')
 fig.suptitle('Aligned Histograms for X1 and X2 Across 3 Series with Different Hatching')
 
-plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to make room for the suptitle
+#plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to make room for the suptitle
 #plt.show()
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
