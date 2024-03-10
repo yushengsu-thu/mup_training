@@ -34,9 +34,34 @@ for name_i in dir_list:
 
 
 
+# Generating sample data for d1 and d2
+np.random.seed(0)  # for reproducibility
+d1 = np.random.uniform(-1, 1, 100)
+d2 = np.random.uniform(-1, 1, 100)
+
+# Plotting histograms
+plt.figure(figsize=(10, 5))
+
+plt.subplot(1, 2, 1)
+plt.hist(d1, bins=20, color='skyblue', edgecolor='black')
+plt.title('Histogram of d1')
+plt.xlabel('Value')
+plt.ylabel('Frequency')
+
+plt.subplot(1, 2, 2)
+plt.hist(d2, bins=20, color='salmon', edgecolor='black')
+plt.title('Histogram of d2')
+plt.xlabel('Value')
+plt.ylabel('Frequency')
+
+plt.tight_layout()
+target_dirname = f'../visual/img.pdf'
+plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
+exit()
 
 
 
+'''
 #import numpy as np
 #import matplotlib.pyplot as plt
 
@@ -63,6 +88,7 @@ plt.legend()
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 exit()
+'''
 
 
 
