@@ -136,13 +136,20 @@ exit()
 
 
 
+sentence_length = 100
+llm_layer = 6
+
 X = ['Group A','Group B','Group C','Group D']
+#X = ["i" for i in range(sentence_length)]
+#print(X)
+#exit()
+
 Ygirls = [10,20,20,40]
 Zboys = [20,30,25,30]
 
 X_axis = np.arange(len(X))
 
-fig, axs = plt.subplots(3, 1, figsize=(10, 15))
+fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
 
 for ax in axs:
     ax.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
