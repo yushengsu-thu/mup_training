@@ -140,12 +140,12 @@ sentence_length = 100
 llm_layer = 6
 
 #X = ['Group A','Group B','Group C','Group D']
-X = [str(i) for i in range(4)]
-#print(X)
-#exit()
+X = [str(i) for i in range(sentence_length)]
 
-Ygirls = [10,20,20,40]
-Zboys = [20,30,25,30]
+#Ygirls = [10,20,20,40]
+Ygirls = [1]*sentence_length
+#Zboys = [20,30,25,30]
+Zboys = [2]*sentence_length
 
 X_axis = np.arange(len(X))
 
@@ -154,6 +154,8 @@ fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
 for idx, ax in enumerate(axs):
     ax.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
     ax.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
+    #ax.bar(X_axis, Ygirls, 0.4, label = 'Girls')
+    #ax.bar(X_axis, Zboys, 0.4, label = 'Boys')
 
     ax.set_xticks(X_axis)
     ax.set_xticklabels(X)
@@ -169,6 +171,8 @@ target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 
 exit()
+
+
 
 
 for idx_i in range(len(dir_list)):
