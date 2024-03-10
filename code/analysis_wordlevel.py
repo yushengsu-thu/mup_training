@@ -42,7 +42,7 @@ x2_series = np.random.randint(-1, 11, size=(3, sentence_length))  # Three series
 #print(x1_series.shape)
 
 # Define bin edges for alignment
-bins = np.arange(0, sentence_length) - 0.5
+bins = np.arange(0, 12) - 0.5
 
 # Create histograms for the three series of X1 and X2
 fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
@@ -55,7 +55,7 @@ for i in range(3):
     axs[i].set_ylabel('Frequency')
 
 # Common settings
-axs[-1].set_xticks(np.arange(0, sentence_length))  # Set x-ticks to be at integer values
+axs[-1].set_xticks(np.arange(0, 10))  # Set x-ticks to be at integer values
 axs[-1].set_xlabel('Value')
 fig.suptitle('Aligned Histograms for X1 and X2 Across 3 Series with Different Hatching')
 
