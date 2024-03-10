@@ -119,6 +119,27 @@ if __name__ == '__main__':
     #model_name = 'openlm-research/open_llama_3b'
     model_name = 'EleutherAI/'+str(llm_name)
 
+
+    #model_name = 'EleutherAI/pythia-70m'
+    _, name = model_name.split("/")
+
+    # Save Dir
+    target_dir_sentencelevel = os.getcwd()+"/../neurons/sentencelevel/"+str(name)
+    if not os.path.exists(target_dir_sentencelevel):
+        os.makedirs(target_dir_sentencelevel)
+    else:
+        pass
+
+    # Save Dir
+    target_dir_wordlevel = os.getcwd()+"/../neurons/wordlevel/"+str(name)
+    if not os.path.exists(target_dir_wordlevel):
+        os.makedirs(target_dir_wordlevel)
+    else:
+        pass
+
+
+
+
     #model = AutoModel.from_pretrainedm_pretrained(model_name, torch_dtype=torch.bfloat16, device_map='auto', trust_remote_code=True)
     model = AutoModel.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map='auto', trust_remote_code=True, cache_dir=target).to(device)
     token = AutoTokenizer.from_pretrained(model_name)
@@ -130,6 +151,7 @@ if __name__ == '__main__':
     list_mean = list()
     all_input_ids = list()
     for idx, data in enumerate(dataset["train"]):
+        #print(idx, "/", 100)
 
         if idx == 100:
             break
@@ -139,13 +161,16 @@ if __name__ == '__main__':
 
         #input_ids = token(['I have an apple.', 'I extremely love my dog, and also my cat.'], padding=True, return_tensors='pt').input_ids.to(device)
         input_ids = token([input_], padding=True, return_tensors='pt').input_ids.to(device)
+        # Save wordlevel
+        torch.save(list_std, str(target_dir_wordlevel)+'/'+str(idx)+'_list_std.pt')
+        torch.save(list_mean, str(target_dir_wordlevel)+'/'+str(idx)+'_list_mean.pt')
 
 
         #torch.Size([batch_size, layers, sentence_length, hidden_state_dim])
-        #ret = activate_neurons(model, input_ids)
-        #ret = activate_neurons(model, input_ids)
         activator = NeuronActivator(model, 'cpu')
         ret = activator.activate_neurons(input_ids).to('cpu')
+
+
         ret = ret.reshape(ret.shape[1], ret.shape[2]*ret.shape[3])
 
         ret = torch.std_mean(ret, dim=1, keepdim=False)
@@ -156,20 +181,10 @@ if __name__ == '__main__':
         list_std.append(ret[0])
         list_mean.append(ret[1])
 
-
     list_std = torch.stack(list_std, dim=0)
     list_mean = torch.stack(list_mean, dim=0)
 
-    #model_name = 'EleutherAI/pythia-70m'
-    _, name = model_name.split("/")
-
-    target_dir = os.getcwd()+"/../neurons/"+str(name)
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
-    else:
-        pass
-
-    torch.save(list_std, str(target_dir)+'/list_std.pt')
-    torch.save(list_mean, str(target_dir)+'/list_mean.pt')
+    torch.save(list_std, str(target_dir_sentencelevel)+'/list_std.pt')
+    torch.save(list_mean, str(target_dir_sentencelevel)+'/list_mean.pt')
 
 
