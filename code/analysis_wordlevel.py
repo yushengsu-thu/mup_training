@@ -37,13 +37,12 @@ sentence_length = 100
 llm_layer = 6
 
 # Generate three sets of data for X1 and X2, all within the range of 0 to 10
-x1_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X1
-print(x1_series.shape)
-#exit()
-x2_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X2
+x1_series = np.random.randint(-1, 11, size=(3, sentence_length))  # Three series for X1
+x2_series = np.random.randint(-1, 11, size=(3, sentence_length))  # Three series for X2
+#print(x1_series.shape)
 
 # Define bin edges for alignment
-bins = np.arange(0, 12) - 0.5
+bins = np.arange(0, sentence_length) - 0.5
 
 # Create histograms for the three series of X1 and X2
 fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
