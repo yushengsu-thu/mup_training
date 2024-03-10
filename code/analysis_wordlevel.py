@@ -37,14 +37,23 @@ for name_i in dir_list:
 
 
 
-import numpy as np
-import matplotlib.pyplot as plt
+#import numpy as np
+#import matplotlib.pyplot as plt
+
+
+sentence_length = 100
+llm_layer = 6
+layers = 3
 
 # Generating 100 samples for each X1 and X2 in the specified ranges
-X1 = np.random.uniform(-1, 1, 100)
-X2 = np.random.uniform(-1, 1, 100)
+#X1 = np.random.uniform(-1, 1, 100)
+#X2 = np.random.uniform(-1, 1, 100)
+X1 = np.random.uniform(-1, 1, size=(layers, sentence_length))  # Three series for X1
+X2 = np.random.uniform(-1, 1, size=(layers, sentence_length))  # Three series for X2
 
-plt.hist([X1, X2], bins=20, alpha=0.5, label=['X1', 'X2'])
+for i in range(layers):
+    plt.hist([X1[i], X2[i]], bins=20, alpha=0.5, label=['X1', 'X2'])
+
 plt.xlabel('Value')
 plt.ylabel('Frequency')
 plt.title('Histogram of X1 and X2')
