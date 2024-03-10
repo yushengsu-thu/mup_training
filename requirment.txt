@@ -4,3 +4,4 @@ dataset==1.6.2
 bitsandbytes==0.42.0
 wandb==0.15.3
 datasets==2.18.0
+matplotlib==3.8.3
