@@ -151,16 +151,18 @@ X_axis = np.arange(len(X))
 
 fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
 
-for ax in axs:
+for idx, ax in enumerate(axs):
     ax.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
     ax.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
 
     ax.set_xticks(X_axis)
     ax.set_xticklabels(X)
-ax.set_xlabel("Groups")
-ax.set_ylabel("Number of Students")
-ax.set_title("Number of Students in each group")
-ax.legend()
+    if idx == 0:
+        ax.set_xlabel("Groups")
+        ax.set_ylabel("Number of Students")
+        ax.set_title("Number of Students in each group")
+        ax.legend()
+
 #plt.show()
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
