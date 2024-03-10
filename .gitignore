@@ -1,4 +1,4 @@
 git_push.sh
-log/*/*
+log/*
 cache/*
 checkpoint/*
