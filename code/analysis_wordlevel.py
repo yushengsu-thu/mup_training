@@ -56,7 +56,7 @@ for i in range(3):
     axs[i].set_ylabel('Frequency')
 
 # Common settings
-axs[-1].set_xticks(np.arange(0, 11))  # Set x-ticks to be at integer values
+axs[-1].set_xticks(np.arange(0, sentence_length))  # Set x-ticks to be at integer values
 axs[-1].set_xlabel('Value')
 fig.suptitle('Aligned Histograms for X1 and X2 Across 3 Series with Different Hatching')
 
