@@ -157,10 +157,10 @@ for ax in axs:
 
     ax.set_xticks(X_axis)
     ax.set_xticklabels(X)
-    ax.set_xlabel("Groups")
-    ax.set_ylabel("Number of Students")
-    ax.set_title("Number of Students in each group")
-    ax.legend()
+ax.set_xlabel("Groups")
+ax.set_ylabel("Number of Students")
+ax.set_title("Number of Students in each group")
+ax.legend()
 #plt.show()
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
