@@ -36,13 +36,15 @@ for name_i in dir_list:
 
 # Generate three sets of data for X1 and X2, all within the range of 0 to 10
 x1_series = np.random.randint(0, 11, size=(3, 11))  # Three series for X1
+print(x1_series.shape)
+#exit()
 x2_series = np.random.randint(0, 11, size=(3, 11))  # Three series for X2
 
 # Define bin edges for alignment
 bins = np.arange(0, 12) - 0.5
 
 # Create histograms for the three series of X1 and X2
-fig, axs = plt.subplots(3, 1, figsize=(10, 18), sharex=True)
+fig, axs = plt.subplots(3, 1, figsize=(5, 18), sharex=True)
 
 # Loop through each series and plot only X1 and X2 with different hatching for differentiation
 for i in range(3):
@@ -76,7 +78,7 @@ for idx_i in range(len(dir_list)):
             length_ = os.listdir(name_i)
 
         #for idx in range(length_):
-        for idx in range(2):
+        for idx in range(1):
             #mean
             name_i_mean = f'{name_i}/{idx}_list_mean.pt'
             name_j_mean = f'{name_j}/{idx}_list_mean.pt'
