@@ -33,12 +33,14 @@ for name_i in dir_list:
 '''
 
 
+sentence_length = 100
+llm_layer = 6
 
 # Generate three sets of data for X1 and X2, all within the range of 0 to 10
-x1_series = np.random.randint(0, 11, size=(3, 11))  # Three series for X1
+x1_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X1
 print(x1_series.shape)
 #exit()
-x2_series = np.random.randint(0, 11, size=(3, 11))  # Three series for X2
+x2_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X2
 
 # Define bin edges for alignment
 bins = np.arange(0, 12) - 0.5
