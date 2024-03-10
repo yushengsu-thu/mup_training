@@ -33,6 +33,30 @@ for name_i in dir_list:
 '''
 
 
+
+
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Generating 100 samples for each X1 and X2 in the specified ranges
+X1 = np.random.uniform(-1, 1, 100)
+X2 = np.random.uniform(-1, 1, 100)
+
+plt.hist([X1, X2], bins=20, alpha=0.5, label=['X1', 'X2'])
+plt.xlabel('Value')
+plt.ylabel('Frequency')
+plt.title('Histogram of X1 and X2')
+plt.legend()
+#plt.show()
+
+target_dirname = f'../visual/img.pdf'
+plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
+exit()
+
+
+
 sentence_length = 100
 llm_layer = 6
 
@@ -43,7 +67,8 @@ x2_series = np.random.uniform(-1, 1, size=(3, sentence_length))  # Three series 
 
 # Define bin edges for alignment
 #bins = np.arange(0, 12) - 0.5
-bins = np.linspace(-1, 1, sentence_length+1)
+#bins = np.linspace(-1, 1, sentence_length+1)
+bins = np.linspace(0, sentence_length, sentence_length+1)
 
 # Create histograms for the three series of X1 and X2
 fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
