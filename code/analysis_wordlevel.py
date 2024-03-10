@@ -36,26 +36,28 @@ for name_i in dir_list:
 sentence_length = 100
 llm_layer = 6
 
-# Generate three sets of data for X1 and X2, all within the range of 0 to 10
-x1_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X1
-x2_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X2
+# Generate three sets of data for X1 and X2, all within the range of -1 to 1
+x1_series = np.random.uniform(-1, 1, size=(3, sentence_length))  # Three series for X1
+x2_series = np.random.uniform(-1, 1, size=(3, sentence_length))  # Three series for X2
 #print(x1_series.shape)
 
 # Define bin edges for alignment
-bins = np.arange(0, 100) - 0.5
+#bins = np.arange(0, 12) - 0.5
+bins = np.linspace(-1, 1, sentence_length+1)
 
 # Create histograms for the three series of X1 and X2
 fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
 
 # Loop through each series and plot only X1 and X2 with different hatching for differentiation
 for i in range(3):
+    #print(x1_series[i].shape)
     axs[i].hist(x1_series[i], bins=bins, color='skyblue', alpha=0.7, label='X1 (Series {})'.format(i+1), rwidth=0.8, hatch='//')
     axs[i].hist(x2_series[i], bins=bins, color='skyblue', alpha=0.7, label='X2 (Series {})'.format(i+1), rwidth=0.8, hatch='\\\\')
     axs[i].legend()
     axs[i].set_ylabel('Frequency')
 
 # Common settings
-axs[-1].set_xticks(np.arange(0, sentence_length))  # Set x-ticks to be at integer values
+#axs[-1].set_xticks(np.arange(0, sentence_length))  # Set x-ticks to be at integer values
 axs[-1].set_xlabel('Value')
 fig.suptitle('Aligned Histograms for X1 and X2 Across 3 Series with Different Hatching')
 
