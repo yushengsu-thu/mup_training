@@ -34,6 +34,7 @@ for name_i in dir_list:
 
 
 
+'''
 # Generating sample data for d1 and d2
 np.random.seed(0)  # for reproducibility
 d1 = np.random.uniform(-1, 1, 100)
@@ -58,6 +59,7 @@ plt.tight_layout()
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 exit()
+'''
 
 
 
@@ -133,20 +135,25 @@ exit()
 '''
 
 
+
 X = ['Group A','Group B','Group C','Group D']
 Ygirls = [10,20,20,40]
 Zboys = [20,30,25,30]
 
 X_axis = np.arange(len(X))
 
-plt.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
-plt.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
+fig, axs = plt.subplots(3, 1, figsize=(10, 15))
 
-plt.xticks(X_axis, X)
-plt.xlabel("Groups")
-plt.ylabel("Number of Students")
-plt.title("Number of Students in each group")
-plt.legend()
+for ax in axs:
+    ax.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
+    ax.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
+
+    ax.set_xticks(X_axis)
+    ax.set_xticklabels(X)
+    ax.set_xlabel("Groups")
+    ax.set_ylabel("Number of Students")
+    ax.set_title("Number of Students in each group")
+    ax.legend()
 #plt.show()
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
