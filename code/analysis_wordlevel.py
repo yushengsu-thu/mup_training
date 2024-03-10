@@ -158,10 +158,11 @@ for idx, ax in enumerate(axs):
     ax.set_xticks(X_axis)
     ax.set_xticklabels(X)
     if idx == 0:
-        ax.set_xlabel("Groups")
-        ax.set_ylabel("Number of Students")
         ax.set_title("Number of Students in each group")
-        ax.legend()
+        ax.set_ylabel("Number of Students")
+ax.set_xlabel("Groups")
+ax.legend()
+
 
 #plt.show()
 target_dirname = f'../visual/img.pdf'
