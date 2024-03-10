@@ -43,7 +43,7 @@ x2_series = np.random.uniform(-1, 1, size=(3, sentence_length))  # Three series 
 
 # Define bin edges for alignment
 #bins = np.arange(0, 12) - 0.5
-bins = np.linspace(-1, 1, sentence_length+1)
+bins = np.linspace(-1, sentence_length, sentence_length+1)
 
 # Create histograms for the three series of X1 and X2
 fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
@@ -63,6 +63,8 @@ fig.suptitle('Aligned Histograms for X1 and X2 Across 3 Series with Different Ha
 
 plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to make room for the suptitle
 #plt.show()
+
+
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 
