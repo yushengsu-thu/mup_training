@@ -37,10 +37,10 @@ sentence_length = 100
 llm_layer = 6
 
 # Generate three sets of data for X1 and X2, all within the range of 0 to 10
-x1_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X1
+x1_series = np.random.randint(-1, 1, size=(3, sentence_length))  # Three series for X1
 print(x1_series.shape)
 #exit()
-x2_series = np.random.randint(0, 11, size=(3, sentence_length))  # Three series for X2
+x2_series = np.random.randint(-1, 1, size=(3, sentence_length))  # Three series for X2
 
 # Define bin edges for alignment
 bins = np.arange(0, 12) - 0.5
@@ -60,7 +60,7 @@ axs[-1].set_xticks(np.arange(0, sentence_length))  # Set x-ticks to be at intege
 axs[-1].set_xlabel('Value')
 fig.suptitle('Aligned Histograms for X1 and X2 Across 3 Series with Different Hatching')
 
-#plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to make room for the suptitle
+plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to make room for the suptitle
 #plt.show()
 target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
