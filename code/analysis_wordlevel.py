@@ -154,7 +154,7 @@ def plot(tensor_1, tensor_2):
 
 
     llm_layer = int(tensor_2.shape[0])
-    fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
+
     rate = int(tensor_2.shape[0]/tensor_1.shape[0])
     sentence_length = int(tensor_1.shape[1])
 
@@ -164,53 +164,50 @@ def plot(tensor_1, tensor_2):
 
     #mean
     tensor_1_mean = torch.mean(tensor_1, dim=-1)
-    tensor_1_std = torch.std(tensor_1, dim=-1, keepdim=True)
+    tensor_1_std = torch.std(tensor_1, dim=-1)
 
     #std
     tensor_2_mean = torch.mean(tensor_2, dim=-1)
-    tensor_2_std = torch.std(tensor_2, dim=-1, keepdim=True)
+    tensor_2_std = torch.std(tensor_2, dim=-1)
 
 
+    fig_mean, axs_mean = plt.subplots(llm_layer, 1, figsize=(10, 15))
     #for layer_2 in range(llm_layer):
-    for idx, ax in enumerate(axs):
-
+    for idx, ax in enumerate(axs_mean):
         layer_2 = idx
         layer_1 = layer_2//rate
-
         tensor_1_mean_layer = tensor_1_mean[layer_1].tolist()
         tensor_2_mean_layer = tensor_2_mean[layer_2].tolist()
-
-        tensor_1_std_layer = tensor_1_std[layer_1].tolist()
-        tensor_2_std_layer = tensor_2_std[layer_2].tolist()
-
-
         ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
         ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
         if layer_2 == 0:
             ax.set_title("Number of Students in each group")
             ax.set_ylabel("Number of Students")
-
-        '''
-        for idx, ax in enumerate(axs):
-            #ax.bar(X_axis - 0.15, tensor_1, 0.3, label = 'tensor_1')
-            ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
-
-            #ax.bar(X_axis + 0.15, tensor_2, 0.3, label = 'tensor_2')
-            ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
-
-            #ax.set_xticks(X_axis)
-            #ax.set_xticklabels(X)
-            if idx == 0:
-                ax.set_title("Number of Students in each group")
-                ax.set_ylabel("Number of Students")
-        '''
         ax.set_xlabel("Groups")
         ax.legend()
-
-
-    #plt.show()
-    target_dirname = f'../visual/img.pdf'
+    target_dirname = f'../visual/img_mean.pdf'
     plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
+
+
+
+
+    fig_std, axs_std = plt.subplots(llm_layer, 1, figsize=(10, 15))
+    #for layer_2 in range(llm_layer):
+    for idx, ax in enumerate(axs_std):
+        layer_2 = idx
+        layer_1 = layer_2//rate
+        tensor_1_std_layer = tensor_1_std[layer_1].tolist()
+        tensor_2_std_layer = tensor_2_std[layer_2].tolist()
+        ax.bar(X_axis - 0.15, tensor_1_std_layer, 0.3, label = 'tensor_1')
+        ax.bar(X_axis + 0.15, tensor_2_std_layer, 0.3, label = 'tensor_2')
+        if layer_2 == 0:
+            ax.set_title("Number of Students in each group")
+            ax.set_ylabel("Number of Students")
+        ax.set_xlabel("Groups")
+        ax.legend()
+    target_dirname = f'../visual/img_std.pdf'
+    plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
+
 
     exit()
 
