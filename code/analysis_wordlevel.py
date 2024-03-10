@@ -153,7 +153,7 @@ def plot(tensor_1, tensor_2):
     #torch.Size([12, 39, 3072])
 
 
-    llm_layer = int(tensor_1.shape[0])
+    llm_layer = int(tensor_2.shape[0])
     fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
     rate = int(tensor_2.shape[0]/tensor_1.shape[0])
     sentence_length = int(tensor_1.shape[1])
@@ -171,31 +171,31 @@ def plot(tensor_1, tensor_2):
     tensor_2_std = torch.std(tensor_2, dim=-1, keepdim=True)
 
 
-    for layer_1 in range(llm_layer):
-        for r in range(rate):
-            layer_2 = layer_1*rate + r
+    for layer_2 in range(llm_layer):
 
-            tensor_1_mean_layer = tensor_1_mean[layer_1].tolist()
-            tensor_2_mean_layer = tensor_2_mean[layer_2].tolist()
+        layer_1 = layer_2//rate
 
-            tensor_1_std_layer = tensor_1_std[layer_1].tolist()
-            tensor_2_std_layer = tensor_2_std[layer_2].tolist()
+        tensor_1_mean_layer = tensor_1_mean[layer_1].tolist()
+        tensor_2_mean_layer = tensor_2_mean[layer_2].tolist()
+
+        tensor_1_std_layer = tensor_1_std[layer_1].tolist()
+        tensor_2_std_layer = tensor_2_std[layer_2].tolist()
 
 
-            for idx, ax in enumerate(axs):
-                #ax.bar(X_axis - 0.15, tensor_1, 0.3, label = 'tensor_1')
-                ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
+        for idx, ax in enumerate(axs):
+            #ax.bar(X_axis - 0.15, tensor_1, 0.3, label = 'tensor_1')
+            ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
 
-                #ax.bar(X_axis + 0.15, tensor_2, 0.3, label = 'tensor_2')
-                ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
+            #ax.bar(X_axis + 0.15, tensor_2, 0.3, label = 'tensor_2')
+            ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
 
-                #ax.set_xticks(X_axis)
-                #ax.set_xticklabels(X)
-                if idx == 0:
-                    ax.set_title("Number of Students in each group")
-                    ax.set_ylabel("Number of Students")
-            ax.set_xlabel("Groups")
-            ax.legend()
+            #ax.set_xticks(X_axis)
+            #ax.set_xticklabels(X)
+            if idx == 0:
+                ax.set_title("Number of Students in each group")
+                ax.set_ylabel("Number of Students")
+        ax.set_xlabel("Groups")
+        ax.legend()
 
 
     #plt.show()
