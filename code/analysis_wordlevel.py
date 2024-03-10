@@ -44,7 +44,7 @@ x2_series = np.random.randint(0, 11, size=(3, 11))  # Three series for X2
 bins = np.arange(0, 12) - 0.5
 
 # Create histograms for the three series of X1 and X2
-fig, axs = plt.subplots(3, 1, figsize=(5, 18), sharex=True)
+fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
 
 # Loop through each series and plot only X1 and X2 with different hatching for differentiation
 for i in range(3):
