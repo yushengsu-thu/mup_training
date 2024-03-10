@@ -171,8 +171,10 @@ def plot(tensor_1, tensor_2):
     tensor_2_std = torch.std(tensor_2, dim=-1, keepdim=True)
 
 
-    for layer_2 in range(llm_layer):
+    #for layer_2 in range(llm_layer):
+    for idx, ax in enumerate(axs):
 
+        layer_2 = idx
         layer_1 = layer_2//rate
 
         tensor_1_mean_layer = tensor_1_mean[layer_1].tolist()
@@ -182,6 +184,13 @@ def plot(tensor_1, tensor_2):
         tensor_2_std_layer = tensor_2_std[layer_2].tolist()
 
 
+        ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
+        ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
+        if layer_2 == 0:
+            ax.set_title("Number of Students in each group")
+            ax.set_ylabel("Number of Students")
+
+        '''
         for idx, ax in enumerate(axs):
             #ax.bar(X_axis - 0.15, tensor_1, 0.3, label = 'tensor_1')
             ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
@@ -194,6 +203,7 @@ def plot(tensor_1, tensor_2):
             if idx == 0:
                 ax.set_title("Number of Students in each group")
                 ax.set_ylabel("Number of Students")
+        '''
         ax.set_xlabel("Groups")
         ax.legend()
 
