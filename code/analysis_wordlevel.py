@@ -154,10 +154,8 @@ fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
 for idx, ax in enumerate(axs):
     ax.bar(X_axis - 0.15, Ygirls, 0.3, label = 'Girls')
     ax.bar(X_axis + 0.15, Zboys, 0.3, label = 'Boys')
-    #ax.bar(X_axis, Ygirls, 0.4, label = 'Girls')
-    #ax.bar(X_axis, Zboys, 0.4, label = 'Boys')
 
-    ax.set_xticks(X_axis)
+    #ax.set_xticks(X_axis)
     #ax.set_xticklabels(X)
     if idx == 0:
         ax.set_title("Number of Students in each group")
