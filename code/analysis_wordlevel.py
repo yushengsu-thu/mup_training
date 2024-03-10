@@ -139,8 +139,8 @@ exit()
 sentence_length = 100
 llm_layer = 6
 
-X = ['Group A','Group B','Group C','Group D']
-#X = ["i" for i in range(sentence_length)]
+#X = ['Group A','Group B','Group C','Group D']
+X = [str(i) for i in range(4)]
 #print(X)
 #exit()
 
@@ -152,8 +152,10 @@ X_axis = np.arange(len(X))
 fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
 
 for idx, ax in enumerate(axs):
-    ax.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
-    ax.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
+    #ax.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
+    ax.bar(X_axis, Ygirls, 0.4, label = 'Girls')
+    #ax.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
+    ax.bar(X_axis, Zboys, 0.4, label = 'Boys')
 
     ax.set_xticks(X_axis)
     ax.set_xticklabels(X)
