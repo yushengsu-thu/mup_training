@@ -161,15 +161,13 @@ if __name__ == '__main__':
 
         #input_ids = token(['I have an apple.', 'I extremely love my dog, and also my cat.'], padding=True, return_tensors='pt').input_ids.to(device)
         input_ids = token([input_], padding=True, return_tensors='pt').input_ids.to(device)
-        # Save wordlevel
-        torch.save(list_std, str(target_dir_wordlevel)+'/'+str(idx)+'_list_std.pt')
-        torch.save(list_mean, str(target_dir_wordlevel)+'/'+str(idx)+'_list_mean.pt')
-
-
         #torch.Size([batch_size, layers, sentence_length, hidden_state_dim])
         activator = NeuronActivator(model, 'cpu')
         ret = activator.activate_neurons(input_ids).to('cpu')
 
+        # Save wordlevel
+        torch.save(ret, str(target_dir_wordlevel)+'/'+str(idx)+'_neurons.pt')
+        #torch.save(list_mean, str(target_dir_wordlevel)+'/'+str(idx)+'_list_mean.pt')
 
         ret = ret.reshape(ret.shape[1], ret.shape[2]*ret.shape[3])
 

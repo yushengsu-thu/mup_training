@@ -27,6 +27,15 @@ dir_list = ["pythia-14m", 'pythia-160m']
 
 '''
 for name_i in dir_list:
+    print(path+name_i+"/0_neurons.pt")
+    if os.path.isfile(path+"/"+name_i+"/0_neurons.pt"):
+        pt_file = torch.load(path+"/"+name_i+"/0_neurons.pt")
+        print(name_i, pt_file.shape)
+exit()
+'''
+
+'''
+for name_i in dir_list:
     if os.path.isfile(path+name_i+"/list_mean.pt"):
         pt_file = torch.load(path+name_i+"/list_mean.pt")
         print(name_i, pt_file.shape)
@@ -135,40 +144,66 @@ exit()
 '''
 
 
+def plot(tensor_1, tensor_2):
 
-sentence_length = 100
-llm_layer = 6
-
-#X = ['Group A','Group B','Group C','Group D']
-X = [str(i) for i in range(sentence_length)]
-
-#Ygirls = [10,20,20,40]
-Ygirls = [1]*sentence_length
-#Zboys = [20,30,25,30]
-Zboys = [2]*sentence_length
-
-X_axis = np.arange(len(X))
-
-fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
-
-for idx, ax in enumerate(axs):
-    ax.bar(X_axis - 0.15, Ygirls, 0.3, label = 'Girls')
-    ax.bar(X_axis + 0.15, Zboys, 0.3, label = 'Boys')
-
-    #ax.set_xticks(X_axis)
-    #ax.set_xticklabels(X)
-    if idx == 0:
-        ax.set_title("Number of Students in each group")
-        ax.set_ylabel("Number of Students")
-ax.set_xlabel("Groups")
-ax.legend()
+    # torch.Size([layers, length, emb])
+    tensor_1 = tensor_1.reshape(tensor_1.shape[0]*tensor_1.shape[1], tensor_1.shape[2], tensor_1.shape[3])
+    #torch.Size([6, 39, 512])
+    tensor_2 = tensor_2.reshape(tensor_2.shape[0]*tensor_2.shape[1], tensor_2.shape[2], tensor_2.shape[3])
+    #torch.Size([12, 39, 3072])
 
 
-#plt.show()
-target_dirname = f'../visual/img.pdf'
-plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
+    llm_layer = int(tensor_1.shape[0])
+    fig, axs = plt.subplots(llm_layer, 1, figsize=(10, 15))
+    rate = int(tensor_2.shape[0]/tensor_1.shape[0])
+    sentence_length = int(tensor_1.shape[1])
 
-exit()
+    #X = ['Group A','Group B','Group C','Group D']
+    X = [str(i) for i in range(sentence_length)]
+    X_axis = np.arange(len(X))
+
+    #mean
+    tensor_1_mean = torch.mean(tensor_1, dim=-1)
+    tensor_1_std = torch.std(tensor_1, dim=-1, keepdim=True)
+
+    #std
+    tensor_2_mean = torch.mean(tensor_2, dim=-1)
+    tensor_2_std = torch.std(tensor_2, dim=-1, keepdim=True)
+
+
+    for layer_1 in range(llm_layer):
+        for r in range(rate):
+            layer_2 = layer_1*rate + r
+
+            tensor_1_mean_layer = tensor_1_mean[layer_1].tolist()
+            tensor_2_mean_layer = tensor_2_mean[layer_2].tolist()
+
+            tensor_1_std_layer = tensor_1_std[layer_1].tolist()
+            tensor_2_std_layer = tensor_2_std[layer_2].tolist()
+
+
+            for idx, ax in enumerate(axs):
+                #ax.bar(X_axis - 0.15, tensor_1, 0.3, label = 'tensor_1')
+                ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
+
+                #ax.bar(X_axis + 0.15, tensor_2, 0.3, label = 'tensor_2')
+                ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
+
+                #ax.set_xticks(X_axis)
+                #ax.set_xticklabels(X)
+                if idx == 0:
+                    ax.set_title("Number of Students in each group")
+                    ax.set_ylabel("Number of Students")
+            ax.set_xlabel("Groups")
+            ax.legend()
+
+
+    #plt.show()
+    target_dirname = f'../visual/img.pdf'
+    plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
+
+    exit()
+
 
 
 
@@ -178,16 +213,16 @@ for idx_i in range(len(dir_list)):
         name_i = dir_list[idx_i]
         name_j = dir_list[idx_j]
 
-        name_i = path + name_i
-        name_j = path + name_j
+        name_i = path + "/" + name_i
+        name_j = path + "/" + name_j
         if os.path.isdir(name_i) and os.path.isdir(name_j):
             length_ = os.listdir(name_i)
 
         #for idx in range(length_):
         for idx in range(1):
             #mean
-            name_i_mean = f'{name_i}/{idx}_list_mean.pt'
-            name_j_mean = f'{name_j}/{idx}_list_mean.pt'
+            name_i_mean = f'{name_i}/{idx}_neurons.pt'
+            name_j_mean = f'{name_j}/{idx}_neurons.pt'
             if os.path.isfile(name_i_mean):
                 pt_i = torch.load(name_i_mean)
             else:
@@ -197,8 +232,7 @@ for idx_i in range(len(dir_list)):
             else:
                 break
 
-
-
+            plot(pt_i, pt_j)
         exit()
 
 
