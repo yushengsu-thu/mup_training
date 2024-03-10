@@ -92,6 +92,7 @@ exit()
 
 
 
+'''
 sentence_length = 100
 llm_layer = 6
 
@@ -129,7 +130,28 @@ target_dirname = f'../visual/img.pdf'
 plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 
 exit()
+'''
 
+
+X = ['Group A','Group B','Group C','Group D']
+Ygirls = [10,20,20,40]
+Zboys = [20,30,25,30]
+
+X_axis = np.arange(len(X))
+
+plt.bar(X_axis - 0.2, Ygirls, 0.4, label = 'Girls')
+plt.bar(X_axis + 0.2, Zboys, 0.4, label = 'Boys')
+
+plt.xticks(X_axis, X)
+plt.xlabel("Groups")
+plt.ylabel("Number of Students")
+plt.title("Number of Students in each group")
+plt.legend()
+#plt.show()
+target_dirname = f'../visual/img.pdf'
+plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
+
+exit()
 
 
 for idx_i in range(len(dir_list)):
