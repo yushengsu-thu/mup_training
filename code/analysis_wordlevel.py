@@ -35,6 +35,28 @@ exit()
 '''
 
 
+def pearson_correlation(x, y):
+    # Ensure x and y have the same length
+    assert x.size(0) == y.size(0), "Tensors must have the same size"
+
+    # Calculate means
+    x_mean = torch.mean(x)
+    y_mean = torch.mean(y)
+
+    # Calculate the covariance between x and y
+    covariance = torch.mean((x - x_mean) * (y - y_mean))
+
+    # Calculate the standard deviations
+    x_std = torch.sqrt(torch.var(x, unbiased=False))
+    y_std = torch.sqrt(torch.var(y, unbiased=False))
+
+    # Calculate the correlation coefficient
+    correlation = covariance / (x_std * y_std)
+
+    return correlation
+
+
+
 def plot(tensor_1, tensor_2, name_1, name_2):
 
     # torch.Size([layers, length, emb])
@@ -104,7 +126,6 @@ def plot(tensor_1, tensor_2, name_1, name_2):
     target_dirname = f'../visual/img_std.pdf'
     plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.8)
     plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
-
 
     exit()
 
