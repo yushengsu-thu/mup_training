@@ -42,6 +42,8 @@ cd script
 bash finetune_llm.sh
 ```
 
+- Project dir: cscc-new: `/lustre/scratch/shared-folders/llm_project/yusheng/mup_training`
+
 - Excel: [Link](https://docs.google.com/spreadsheets/d/1ZZ0mwfliMvH0N7WlwK_gDtJPsxi_l27XxKmCstRLpAI/edit?usp=sharing)
 
 - Word: [Link](https://docs.google.com/document/d/1xnVAxbPtNVtDTSyxQsH3j9AopDdHloKiUFnTRxKhZ7E/edit)
