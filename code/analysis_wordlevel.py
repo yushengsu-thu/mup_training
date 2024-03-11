@@ -3,6 +3,7 @@ import os
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 import numpy as np
+import argparse
 
 
 
@@ -59,7 +60,7 @@ def pearson_correlation(x, y):
 
 
 
-def plot(tensor_1, tensor_2, name_1, name_2):
+def plot(tensor_1, tensor_2, name_1, name_2, sample_id):
 
     # torch.Size([layers, length, emb])
     tensor_1 = tensor_1.reshape(tensor_1.shape[0]*tensor_1.shape[1], tensor_1.shape[2], tensor_1.shape[3])
@@ -99,10 +100,9 @@ def plot(tensor_1, tensor_2, name_1, name_2):
         ax.legend(loc='right')
         if idx == len(axs_mean)-1:
             ax.set_xlabel("i_th tokens")
-    target_dirname = f'../visual/img_mean.pdf'
+    target_dirname = f'../visual/{sample_id}_img_mean.pdf'
     plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.8)
     plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
-
 
 
 
@@ -124,96 +124,45 @@ def plot(tensor_1, tensor_2, name_1, name_2):
         if idx == len(axs_mean)-1:
             ax.set_xlabel("i_th tokens")
 
-    target_dirname = f'../visual/img_std.pdf'
+    target_dirname = f'../visual/{sample_id}_img_std.pdf'
     plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.8)
     plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 
-    exit()
+
+
+def main(args):
+    num_of_samples = args.num_of_samples
+
+    for idx_i in range(len(dir_list)):
+        for idx_j in range(idx_i+1, len(dir_list)):
+            name_i_ = dir_list[idx_i]
+            name_j_ = dir_list[idx_j]
+
+            name_i = path + "/" + name_i_
+            name_j = path + "/" + name_j_
+            if os.path.isdir(name_i) and os.path.isdir(name_j):
+                length_ = os.listdir(name_i)
+
+            for idx in range(num_of_samples):
+                #mean
+                name_i_mean = f'{name_i}/{idx}_neurons.pt'
+                name_j_mean = f'{name_j}/{idx}_neurons.pt'
+                if os.path.isfile(name_i_mean):
+                    pt_i = torch.load(name_i_mean)
+                else:
+                    break
+                if os.path.isfile(name_j_mean):
+                    pt_j = torch.load(name_j_mean)
+                else:
+                    break
+
+                print(f'{idx}/{num_of_samples}')
+                plot(pt_i, pt_j, name_i_, name_j_, idx)
 
 
 
-
-
-for idx_i in range(len(dir_list)):
-    for idx_j in range(idx_i+1, len(dir_list)):
-        name_i_ = dir_list[idx_i]
-        name_j_ = dir_list[idx_j]
-
-        name_i = path + "/" + name_i_
-        name_j = path + "/" + name_j_
-        if os.path.isdir(name_i) and os.path.isdir(name_j):
-            length_ = os.listdir(name_i)
-
-        #for idx in range(length_):
-        for idx in range(1):
-            #mean
-            name_i_mean = f'{name_i}/{idx}_neurons.pt'
-            name_j_mean = f'{name_j}/{idx}_neurons.pt'
-            if os.path.isfile(name_i_mean):
-                pt_i = torch.load(name_i_mean)
-            else:
-                break
-            if os.path.isfile(name_j_mean):
-                pt_j = torch.load(name_j_mean)
-            else:
-                break
-
-            plot(pt_i, pt_j, name_i_, name_j_)
-        exit()
-
-
-        '''
-        i##mean
-        #name_i_mean = path + name_i + "/list_mean.pt"
-        #name_j_mean = path + name_j + "/list_mean.pt"
-
-        if os.path.isfile(name_i_mean):
-            pt_i = torch.load(name_i_mean)
-        else:
-            break
-        if os.path.isfile(name_j_mean):
-            pt_j = torch.load(name_j_mean)
-        else:
-            break
-        '''
-        print("=========================")
-        print(name_i, ":", pt_i.shape)
-        print(name_j, ":", pt_j.shape)
-        scale_ratio = int(pt_j.shape[-1]/pt_i.shape[-1])
-        print("scale_ratio:", scale_ratio)
-        #dict_ = dict()
-        print("----------mean-----------")
-        for id_ in range(int(pt_j.shape[-1])):
-            kld = F.pairwise_distance(pt_i[:,id_//scale_ratio], pt_j[:,id_])
-            print("Layer:", id_, "Dis_mean:", float(kld))
-            #print(float(kld))
-        #print("=========================")
-
-
-        #std
-        name_i_std = path + name_i + "/list_std.pt"
-        name_j_std = path + name_j + "/list_std.pt"
-        if os.path.isfile(name_i_std):
-            pt_i = torch.load(name_i_std)
-        else:
-            break
-        if os.path.isfile(name_j_std):
-            pt_j = torch.load(name_j_std)
-        else:
-            break
-        #print("=========================")
-        #print(name_i, ":", pt_i.shape)
-        #print(name_j, ":", pt_j.shape)
-        #scale_ratio = int(pt_j.shape[-1]/pt_i.shape[-1])
-        #print("scale_ratio:", scale_ratio)
-        #dict_ = dict()
-        print("----------std-----------")
-        for id_ in range(int(pt_j.shape[-1])):
-            std = F.pairwise_distance(pt_i[:,id_//scale_ratio], pt_j[:,id_])
-            print("Layer:", id_, "Dis_std:", float(std))
-            #print(float(std))
-        print("=========================")
-
-
-
-#n_layer_neurons = torch.load("./myfile.pt")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--num_of_samples', type=int, default=10, help='num_of_samples')
+    args = parser.parse_args()
+    main(args)
