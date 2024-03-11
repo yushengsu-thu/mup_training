@@ -26,7 +26,7 @@ cd script
 
 bash analysis_wordlevel.sh
 ```
-Description:
+Description of `analysis_wordlevel.sh`
 ```bash
 CUDA_VISIBLE_DEVICES=1 python3 ../code/analysis_wordlevel.py \
     --num_of_samples 20
