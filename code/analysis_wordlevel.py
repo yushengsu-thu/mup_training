@@ -34,7 +34,9 @@ for name_i in dir_list:
 exit()
 '''
 
-
+# 0.1 ~ 0.3: low
+# 0.3 ~ 0.5: mid
+# > 0.5: high
 def pearson_correlation(x, y):
     # Ensure x and y have the same length
     assert x.size(0) == y.size(0), "Tensors must have the same size"
@@ -67,22 +69,18 @@ def plot(tensor_1, tensor_2, name_1, name_2):
 
 
     llm_layer = int(tensor_2.shape[0])
-
     rate = int(tensor_2.shape[0]/tensor_1.shape[0])
     sentence_length = int(tensor_1.shape[1])
 
     #X = ['Group A','Group B','Group C','Group D']
     X = [str(i) for i in range(sentence_length)]
     X_axis = np.arange(len(X))
-
     #mean
     tensor_1_mean = torch.mean(tensor_1, dim=-1)
     tensor_1_std = torch.std(tensor_1, dim=-1)
-
     #std
     tensor_2_mean = torch.mean(tensor_2, dim=-1)
     tensor_2_std = torch.std(tensor_2, dim=-1)
-
 
     fig_mean, axs_mean = plt.subplots(llm_layer, 1, figsize=(10, 15))
     #for layer_2 in range(llm_layer):
@@ -113,6 +111,7 @@ def plot(tensor_1, tensor_2, name_1, name_2):
     for idx, ax in enumerate(axs_std):
         layer_2 = idx
         layer_1 = layer_2//rate
+        pc = pearson_correlation(tensor_1_std[layer_1], tensor_2_std[layer_2])
         tensor_1_std_layer = tensor_1_std[layer_1].tolist()
         tensor_2_std_layer = tensor_2_std[layer_2].tolist()
         ax.bar(X_axis - 0.15, tensor_1_std_layer, 0.3, label = 'tensor_1')
