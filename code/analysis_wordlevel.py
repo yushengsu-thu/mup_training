@@ -89,14 +89,15 @@ def plot(tensor_1, tensor_2, name_1, name_2):
     for idx, ax in enumerate(axs_mean):
         layer_2 = idx
         layer_1 = layer_2//rate
+
+        pc = pearson_correlation(tensor_1_mean[layer_1], tensor_2_mean[layer_2])
         tensor_1_mean_layer = tensor_1_mean[layer_1].tolist()
         tensor_2_mean_layer = tensor_2_mean[layer_2].tolist()
         ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
         ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
-        #ax.set_title("Values")
+
         ax.set_ylabel("Values")
-        #ax.set_ylabel(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}')
-        ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}', fontsize=8)
+        ax.set_title(f'{name_1}: layer {layer_1}, {name_2}: layer {layer_2}; Pearson Correlation: {pc}', fontsize=8)
         ax.legend(loc='right')
         if idx == len(axs_mean)-1:
             ax.set_xlabel("i_th tokens")
@@ -118,7 +119,8 @@ def plot(tensor_1, tensor_2, name_1, name_2):
         ax.bar(X_axis + 0.15, tensor_2_std_layer, 0.3, label = 'tensor_2')
 
         ax.set_ylabel("Values")
-        ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}', fontsize=8)
+        #ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}', fontsize=8)
+        ax.set_title(f'{name_1}: layer {layer_1}, {name_2}: layer {layer_2}; Pearson Correlation: {pc}', fontsize=8)
         ax.legend(loc='right')
         if idx == len(axs_mean)-1:
             ax.set_xlabel("i_th tokens")
