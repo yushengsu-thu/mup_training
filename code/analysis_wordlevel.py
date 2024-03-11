@@ -74,7 +74,7 @@ def plot(tensor_1, tensor_2, name_1, name_2):
         #ax.set_title("Values")
         ax.set_ylabel("Values")
         #ax.set_ylabel(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}')
-        ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}')
+        ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}', fontsize=10)
         ax.set_xlabel("i_th tokens")
         ax.legend()
     target_dirname = f'../visual/img_mean.pdf'
@@ -94,8 +94,8 @@ def plot(tensor_1, tensor_2, name_1, name_2):
         ax.bar(X_axis - 0.15, tensor_1_std_layer, 0.3, label = 'tensor_1')
         ax.bar(X_axis + 0.15, tensor_2_std_layer, 0.3, label = 'tensor_2')
 
-        ax.set_title("Values")
-        ax.set_ylabel(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}')
+        ax.set_ylabel("Values")
+        ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}', fontsize=10)
         ax.set_xlabel("i_th tokens")
         ax.legend()
 
