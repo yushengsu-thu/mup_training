@@ -34,117 +34,8 @@ for name_i in dir_list:
 exit()
 '''
 
-'''
-for name_i in dir_list:
-    if os.path.isfile(path+name_i+"/list_mean.pt"):
-        pt_file = torch.load(path+name_i+"/list_mean.pt")
-        print(name_i, pt_file.shape)
-'''
 
-
-
-'''
-# Generating sample data for d1 and d2
-np.random.seed(0)  # for reproducibility
-d1 = np.random.uniform(-1, 1, 100)
-d2 = np.random.uniform(-1, 1, 100)
-
-# Plotting histograms
-plt.figure(figsize=(10, 5))
-
-plt.subplot(1, 2, 1)
-plt.hist(d1, bins=20, color='skyblue', edgecolor='black')
-plt.title('Histogram of d1')
-plt.xlabel('Value')
-plt.ylabel('Frequency')
-
-plt.subplot(1, 2, 2)
-plt.hist(d2, bins=20, color='salmon', edgecolor='black')
-plt.title('Histogram of d2')
-plt.xlabel('Value')
-plt.ylabel('Frequency')
-
-plt.tight_layout()
-target_dirname = f'../visual/img.pdf'
-plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
-exit()
-'''
-
-
-
-'''
-#import numpy as np
-#import matplotlib.pyplot as plt
-
-
-sentence_length = 100
-llm_layer = 6
-layers = 3
-
-# Generating 100 samples for each X1 and X2 in the specified ranges
-#X1 = np.random.uniform(-1, 1, 100)
-#X2 = np.random.uniform(-1, 1, 100)
-X1 = np.random.uniform(-1, 1, size=(layers, sentence_length))  # Three series for X1
-X2 = np.random.uniform(-1, 1, size=(layers, sentence_length))  # Three series for X2
-
-for i in range(layers):
-    plt.hist([X1[i], X2[i]], bins=20, alpha=0.5, label=['X1', 'X2'])
-
-plt.xlabel('Value')
-plt.ylabel('Frequency')
-plt.title('Histogram of X1 and X2')
-plt.legend()
-#plt.show()
-
-target_dirname = f'../visual/img.pdf'
-plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
-exit()
-'''
-
-
-
-'''
-sentence_length = 100
-llm_layer = 6
-
-# Generate three sets of data for X1 and X2, all within the range of -1 to 1
-x1_series = np.random.uniform(-1, 1, size=(3, sentence_length))  # Three series for X1
-x2_series = np.random.uniform(-1, 1, size=(3, sentence_length))  # Three series for X2
-#print(x1_series.shape)
-
-# Define bin edges for alignment
-#bins = np.arange(0, 12) - 0.5
-#bins = np.linspace(-1, 1, sentence_length+1)
-bins = np.linspace(0, sentence_length, sentence_length+1)
-
-# Create histograms for the three series of X1 and X2
-fig, axs = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
-
-# Loop through each series and plot only X1 and X2 with different hatching for differentiation
-for i in range(3):
-    #print(x1_series[i].shape)
-    axs[i].hist(x1_series[i], bins=bins, color='skyblue', alpha=0.7, label='X1 (Series {})'.format(i+1), rwidth=0.8, hatch='//')
-    axs[i].hist(x2_series[i], bins=bins, color='skyblue', alpha=0.7, label='X2 (Series {})'.format(i+1), rwidth=0.8, hatch='\\\\')
-    axs[i].legend()
-    axs[i].set_ylabel('Frequency')
-
-# Common settings
-#axs[-1].set_xticks(np.arange(0, sentence_length))  # Set x-ticks to be at integer values
-axs[-1].set_xlabel('Value')
-fig.suptitle('Aligned Histograms for X1 and X2 Across 3 Series with Different Hatching')
-
-plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to make room for the suptitle
-#plt.show()
-
-
-target_dirname = f'../visual/img.pdf'
-plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
-
-exit()
-'''
-
-
-def plot(tensor_1, tensor_2):
+def plot(tensor_1, tensor_2, name_1, name_2):
 
     # torch.Size([layers, length, emb])
     tensor_1 = tensor_1.reshape(tensor_1.shape[0]*tensor_1.shape[1], tensor_1.shape[2], tensor_1.shape[3])
@@ -180,12 +71,12 @@ def plot(tensor_1, tensor_2):
         tensor_2_mean_layer = tensor_2_mean[layer_2].tolist()
         ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
         ax.bar(X_axis + 0.15, tensor_2_mean_layer, 0.3, label = 'tensor_2')
-        if layer_2 == 0:
-            ax.set_title("Number of Students in each group")
-            ax.set_ylabel("Number of Students")
-        ax.set_xlabel("Groups")
+        ax.set_title("Values")
+        ax.set_ylabel(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}')
+        ax.set_xlabel("i_th tokens")
         ax.legend()
     target_dirname = f'../visual/img_mean.pdf'
+    plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.5)
     plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 
 
@@ -200,12 +91,14 @@ def plot(tensor_1, tensor_2):
         tensor_2_std_layer = tensor_2_std[layer_2].tolist()
         ax.bar(X_axis - 0.15, tensor_1_std_layer, 0.3, label = 'tensor_1')
         ax.bar(X_axis + 0.15, tensor_2_std_layer, 0.3, label = 'tensor_2')
-        if layer_2 == 0:
-            ax.set_title("Number of Students in each group")
-            ax.set_ylabel("Number of Students")
-        ax.set_xlabel("Groups")
+
+        ax.set_title("Values")
+        ax.set_ylabel(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}')
+        ax.set_xlabel("i_th tokens")
         ax.legend()
+
     target_dirname = f'../visual/img_std.pdf'
+    plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.5)
     plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 
 
@@ -217,11 +110,11 @@ def plot(tensor_1, tensor_2):
 
 for idx_i in range(len(dir_list)):
     for idx_j in range(idx_i+1, len(dir_list)):
-        name_i = dir_list[idx_i]
-        name_j = dir_list[idx_j]
+        name_i_ = dir_list[idx_i]
+        name_j_ = dir_list[idx_j]
 
-        name_i = path + "/" + name_i
-        name_j = path + "/" + name_j
+        name_i = path + "/" + name_i_
+        name_j = path + "/" + name_j_
         if os.path.isdir(name_i) and os.path.isdir(name_j):
             length_ = os.listdir(name_i)
 
@@ -239,7 +132,7 @@ for idx_i in range(len(dir_list)):
             else:
                 break
 
-            plot(pt_i, pt_j)
+            plot(pt_i, pt_j, name_i, name_j)
         exit()
 
 
