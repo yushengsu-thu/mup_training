@@ -178,14 +178,14 @@ def main(args):
             all_pc_mean = torch.mean(all_pc_mean, dim=0)
             all_pc_std = torch.mean(all_pc_std, dim=0)
 
-            with jsonlines.open(f'../visual/{name_i_}_to_{name_i_}_mean.jsonl', mode='w') as writer:
-                writer.write(f'../visual/{name_i_}_to_{name_i_}_mean')
+            with jsonlines.open(f'../visual/{name_i_}_to_{name_j_}_mean.jsonl', mode='w') as writer:
+                writer.write(f'../visual/{name_i_}_to_{name_j_}_mean')
                 for val in all_pc_mean:
                     writer.write({"corelation":float(val)})
 
             #####
-            with jsonlines.open(f'../visual/{name_i_}_to_{name_i_}_std.jsonl', mode='w') as writer:
-                writer.write(f'../visual/{name_i_}_to_{name_i_}_std')
+            with jsonlines.open(f'../visual/{name_i_}_to_{name_j_}_std.jsonl', mode='w') as writer:
+                writer.write(f'../visual/{name_i_}_to_{name_j_}_std')
                 for val in all_pc_std:
                     writer.write({"corelation":float(val)})
 
