@@ -75,7 +75,8 @@ def plot(tensor_1, tensor_2, name_1, name_2):
         ax.set_ylabel("Values")
         #ax.set_ylabel(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}')
         ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}', fontsize=8)
-        ax.set_xlabel("i_th tokens")
+        if idx == len(axs_mean)-1:
+            ax.set_xlabel("i_th tokens")
         ax.legend()
     target_dirname = f'../visual/img_mean.pdf'
     plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.8)
@@ -96,7 +97,8 @@ def plot(tensor_1, tensor_2, name_1, name_2):
 
         ax.set_ylabel("Values")
         ax.set_title(f'{name_1}: layer {layer_1}; {name_2}: layer {layer_2}', fontsize=8)
-        ax.set_xlabel("i_th tokens")
+        if idx == len(axs_mean)-1:
+            ax.set_xlabel("i_th tokens")
         ax.legend()
 
     target_dirname = f'../visual/img_std.pdf'
