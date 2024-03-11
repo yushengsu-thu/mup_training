@@ -43,3 +43,5 @@ bash finetune_llm.sh
 ```
 
 Excel: [Link](https://docs.google.com/spreadsheets/d/1ZZ0mwfliMvH0N7WlwK_gDtJPsxi_l27XxKmCstRLpAI/edit?usp=sharing)
+Word: [Link](https://docs.google.com/document/d/1xnVAxbPtNVtDTSyxQsH3j9AopDdHloKiUFnTRxKhZ7E/edit)
+PPT: [Link](https://docs.google.com/presentation/d/12wfyTp1oWu2-D4IBylY620DUuuzOrwWdqdsL4bGZgW4/edit#slide=id.g2c1a302799d_0_90)
