@@ -132,7 +132,7 @@ for idx_i in range(len(dir_list)):
             else:
                 break
 
-            plot(pt_i, pt_j, name_i, name_j)
+            plot(pt_i, pt_j, name_i_, name_j_)
         exit()
 
 
