@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 import numpy as np
 import argparse
+import jsonlines
 
 
 
@@ -62,6 +63,9 @@ def pearson_correlation(x, y):
 
 def plot(tensor_1, tensor_2, name_1, name_2, sample_id):
 
+    tensor_mean_pc = list()
+    tensor_std_pc = list()
+
     # torch.Size([layers, length, emb])
     tensor_1 = tensor_1.reshape(tensor_1.shape[0]*tensor_1.shape[1], tensor_1.shape[2], tensor_1.shape[3])
     #torch.Size([6, 39, 512])
@@ -90,6 +94,7 @@ def plot(tensor_1, tensor_2, name_1, name_2, sample_id):
         layer_1 = layer_2//rate
 
         pc = pearson_correlation(tensor_1_mean[layer_1], tensor_2_mean[layer_2])
+        tensor_mean_pc.append(pc)
         tensor_1_mean_layer = tensor_1_mean[layer_1].tolist()
         tensor_2_mean_layer = tensor_2_mean[layer_2].tolist()
         ax.bar(X_axis - 0.15, tensor_1_mean_layer, 0.3, label = 'tensor_1')
@@ -112,6 +117,7 @@ def plot(tensor_1, tensor_2, name_1, name_2, sample_id):
         layer_2 = idx
         layer_1 = layer_2//rate
         pc = pearson_correlation(tensor_1_std[layer_1], tensor_2_std[layer_2])
+        tensor_std_pc.append(pc)
         tensor_1_std_layer = tensor_1_std[layer_1].tolist()
         tensor_2_std_layer = tensor_2_std[layer_2].tolist()
         ax.bar(X_axis - 0.15, tensor_1_std_layer, 0.3, label = 'tensor_1')
@@ -128,10 +134,14 @@ def plot(tensor_1, tensor_2, name_1, name_2, sample_id):
     plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.8)
     plt.savefig(target_dirname, format="pdf", bbox_inches="tight")
 
+    return torch.stack(tensor_mean_pc), torch.stack(tensor_std_pc)
+
 
 
 def main(args):
     num_of_samples = args.num_of_samples
+    #num_of_samples = 2
+    device = args.device
 
     for idx_i in range(len(dir_list)):
         for idx_j in range(idx_i+1, len(dir_list)):
@@ -143,26 +153,49 @@ def main(args):
             if os.path.isdir(name_i) and os.path.isdir(name_j):
                 length_ = os.listdir(name_i)
 
+            all_pc_mean = list()
+            all_pc_std = list()
             for idx in range(num_of_samples):
                 #mean
                 name_i_mean = f'{name_i}/{idx}_neurons.pt'
                 name_j_mean = f'{name_j}/{idx}_neurons.pt'
                 if os.path.isfile(name_i_mean):
-                    pt_i = torch.load(name_i_mean)
+                    pt_i = torch.load(name_i_mean).to(device)
                 else:
                     break
                 if os.path.isfile(name_j_mean):
-                    pt_j = torch.load(name_j_mean)
+                    pt_j = torch.load(name_j_mean).to(device)
                 else:
                     break
 
                 print(f'{idx}/{num_of_samples}')
-                plot(pt_i, pt_j, name_i_, name_j_, idx)
+                pc_mean, pc_std = plot(pt_i, pt_j, name_i_, name_j_, idx)
+                all_pc_mean.append(pc_mean)
+                all_pc_std.append(pc_std)
+                print(len(all_pc_mean))
+            all_pc_mean = torch.stack(all_pc_mean)
+            all_pc_std = torch.stack(all_pc_std)
+            all_pc_mean = torch.mean(all_pc_mean, dim=0)
+            all_pc_std = torch.mean(all_pc_std, dim=0)
+
+            with jsonlines.open(f'../visual/{name_i_}_to_{name_i_}_mean.jsonl', mode='w') as writer:
+                writer.write(f'../visual/{name_i_}_to_{name_i_}_mean')
+                for val in all_pc_mean:
+                    writer.write({"corelation":float(val)})
+
+            #####
+            with jsonlines.open(f'../visual/{name_i_}_to_{name_i_}_std.jsonl', mode='w') as writer:
+                writer.write(f'../visual/{name_i_}_to_{name_i_}_std')
+                for val in all_pc_std:
+                    writer.write({"corelation":float(val)})
+
 
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_of_samples', type=int, default=10, help='num_of_samples')
+    parser.add_argument('--device', type=str, default = "cuda", help='device')
+    parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
     main(args)
