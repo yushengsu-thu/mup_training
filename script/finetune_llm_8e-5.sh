@@ -7,4 +7,4 @@ CUDA_VISIBLE_DEVICES=2 python3 ../code/finetune_llm.py \
     --learning_rate 8e-5 \
     --weight_decay 0 \
     --batch_size 8 \
-    --target_dir "../checkpoint/EleutherAI/pythia-70m"
+    --target_dir "../checkpoint/EleutherAI/"$LLM

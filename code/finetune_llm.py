@@ -70,6 +70,8 @@ class DatasetWrapper(IterableDataset):
                 split="train",
                 cache_dir=self.cache_dir
         )
+
+
         train_size = int(0.9 * len(dataset))
         # 90%: train, 10%: test
         train_dataset = dataset.select(range(train_size))
@@ -190,7 +192,7 @@ class Trainer:
     def train(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
-        target_log = "../log/"+str(self.learning_rate)
+        target_log = "../log/"+str(finetune_llm.py)+"/"+str(self.learning_rate)
         if os.path.isdir(target_log+"/wandb"):
             # delete dir
             shutil.rmtree(target_log+"/wandb")
