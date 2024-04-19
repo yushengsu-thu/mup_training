@@ -4,9 +4,9 @@
 
 LLM="pythia-70m"
 
-#for lr in 0.00016
 
-for lr in 0.00016  0.00032  0.00064  0.00128  1e-05  2e-05  3e-05  4e-05  5e-06  8e-05
+#for lr in 0.00016  0.00032  0.00064  0.00128  1e-05  2e-05  3e-05  4e-05  5e-06  8e-05
+for lr in 0.00016
 do
     CUDA_VISIBLE_DEVICES=0 python3 ../code/eval_llm.py \
         --llm "EleutherAI/"$LLM \

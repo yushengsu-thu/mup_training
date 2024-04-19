@@ -10,14 +10,13 @@ from tqdm import tqdm
 import bitsandbytes as bnb
 
 from datasets import load_dataset
-from transformers import AutoTokenizer, GPTNeoXForCausalLM
+from transformers import GPTNeoXForCausalLM
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXAttention
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 import argparse
 import os
 from multiprocessing import cpu_count
 import shutil
-import math
 
 # split data, 1:9
 # add ppl
@@ -25,6 +24,9 @@ import math
 PROJECT="mup"
 ENTITY="mbzuai-llm"
 
+
+'''
+## Tune code
 
 def _attn_wrapper(self, query, key, value, attention_mask=None, head_mask=None):
     assert attention_mask is None and head_mask is None, "Not implemented"
@@ -39,35 +41,58 @@ def _attn_wrapper(self, query, key, value, attention_mask=None, head_mask=None):
 
 # patch attention to save a lot of memory
 GPTNeoXAttention._attn = _attn_wrapper
+'''
 
 
 class DatasetWrapper(IterableDataset):
     def __init__(self, max_tokens, cache_dir):
+
+
+        ## Tune code
+        '''
         self.tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-70m")
+        '''
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "LLM360/CrystalCoder",
+            revision="CrystalCoder_phase1_checkpoint_055500",
+            trust_remote_code=True
+        )
+
         self.max_tokens = max_tokens
         self.cache_dir = cache_dir
 
-        self.dataset = load_dataset("Open-Orca/SlimOrca-Dedup",
+    def __iter__(self):
+
+        '''
+        buffer = []
+        for sample in load_dataset(
+            "EleutherAI/the_pile_deduplicated",
+            # "togethercomputer/RedPajama-Data-1T",
+            #name="all",
+            split="train",
+            streaming=True,
+            cache_dir=self.cache_dir
+        ).shuffle(buffer_size=10_000):
+            buffer += self.tokenizer(sample["text"])["input_ids"]
+            buffer += [self.tokenizer.eos_token_id]
+            while len(buffer) > self.max_tokens:
+                yield torch.tensor(buffer[: self.max_tokens])
+                buffer = buffer[self.max_tokens :]
+        '''
+
+
+        dataset = load_dataset("Open-Orca/SlimOrca-Dedup",
                 split="train",
                 cache_dir=self.cache_dir
         )
-        self.train_size = int(0.9 * len(self.dataset))
-        self.eval_size = len(self.dataset) - self.train_size
 
-    def __train_size__(self):
-        return self.train_size
 
-    def __eval_size__(self):
-        return self.eval_size
-
-    def __iter__(self):
-
+        train_size = int(0.9 * len(dataset))
         # 90%: train, 10%: test
-        train_dataset = self.dataset.select(range(self.train_size))
-        valid_dataset = self.dataset.select(range(self.train_size, len(self.dataset)))
+        train_dataset = dataset.select(range(train_size))
+        valid_dataset = dataset.select(range(train_size, len(dataset)))
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        #for sample in train_dataset:
-        for sample in valid_dataset:
+        for sample in train_dataset:
             instruction_system = sample['conversations'][0]["value"]
             instruction_human = sample['conversations'][1]["value"]
             response = sample['conversations'][2]["value"]
@@ -78,7 +103,7 @@ class DatasetWrapper(IterableDataset):
 
 
 
-class Evaler:
+class Trainer:
     def __init__(self, parser):
 
         #self.max_tokens = 2**13
@@ -93,10 +118,9 @@ class Evaler:
         self.cpus = parser.cpus
         self.device = parser.device
         self.target_dir = parser.target_dir
-        self.checkpoint = parser.checkpoint
+        self.revision = parser.revision
 
         self.dataset = DatasetWrapper(self.max_tokens, self.cache_dir)
-
         #tensor([  50,   27,  187,  ..., 5471, 1422, 1912])
         #torch.Size([1024])
 
@@ -110,20 +134,34 @@ class Evaler:
             num_workers=self.cpus,
         )
 
-        self.eval_max_batch = math.ceil(self.loader.dataset.__eval_size__()/self.batch_size)
-        self.train_max_batch = math.ceil(self.loader.dataset.__train_size__()/self.batch_size)
+        self.scaler = torch.cuda.amp.GradScaler()
 
-
-
+        ## Tune code
+        '''
         self.model = model = GPTNeoXForCausalLM.from_pretrained(
-            self.checkpoint
-            #self.llm,
-            #cache_dir = self.cache_dir,
+            self.llm,
+            cache_dir = self.cache_dir,
+        ).to(self.device)
+        '''
+        self.model = model = AutoModelForCausalLM.from_pretrained(
+            self.llm,
+            revision = self.revision,
+            cache_dir = self.cache_dir,
+            trust_remote_code=True
         ).to(self.device)
 
-        self.show_params()
 
-        self.model = self.model.eval()
+        #self.show_params()
+
+        self.opt = bnb.optim.Lion(
+            params=model.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
+            betas=(0.9, 0.95),
+            optim_bits=8,
+            # fused=True,
+        )
+        self.model = torch.compile(model)
 
     def show_params(self):
         model = self.model
@@ -136,12 +174,10 @@ class Evaler:
         print("Params (incl. embeddings):", params)
         print("Trainable params:", trainable_params)
 
-    #def train_step(self, batch):
-    def eval_step(self, batch):
+    def train_step(self, batch):
         batch = batch.to(self.device)
         x, y = batch[:, :-1], batch[:, 1:]
-        #with torch.autocast(device_type="cuda", enabled=True):
-        with torch.no_grad():
+        with torch.autocast(device_type="cuda", enabled=True):
             #print("=======how to self-implement training: figure it out=========")
             #refer: https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=nql_1ER53oCf
             #refer: https://gist.github.com/NaxAlpha/3d69432aa81a9ab47dee70c7a16ad8a5
@@ -150,18 +186,17 @@ class Evaler:
             y = y.reshape(-1)
             z = z.view(-1, z.shape[-1])
             loss = F.cross_entropy(z, y)
-        #self.scaler.scale(loss / self.grad).backward()
+        self.scaler.scale(loss / self.grad).backward()
         # loss is calculated using CrossEntropyLoss which averages over valid labels
         # N.B. the model only calculates loss over trg_len - 1 labels, because it internally shifts the labels
         # to the left by 1.
         return loss
 
 
-
-    #def train(self):
-    def eval(self):
+    def train(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
+        # Uncomment - here
         '''
         target_log = "../log/"+str(finetune_llm.py)+"/"+str(self.learning_rate)
         if os.path.isdir(target_log+"/wandb"):
@@ -183,23 +218,13 @@ class Evaler:
         '''
 
         prog = tqdm(self.loader)
-        #self.opt.zero_grad()
+        self.opt.zero_grad()
 
-        total_loss = 0
-        max_i = 0
-        stop_batch = self.eval_max_batch
-
-        print()
-        print("lr:{}".format(self.learning_rate))
         for i, batch in enumerate(prog):
-            if i == stop_batch:
-                break
             self.step = i + 1
-            loss = self.eval_step(batch)
-            total_loss += loss.item()
-            print_loss = total_loss/self.step
-            prog.set_description(f"loss: {print_loss:.3f}")
-            #max_i = i
+            loss = self.train_step(batch)
+            prog.set_description(f"loss: {loss.item():.3f}")
+            # Uncomment - here
             '''
             wandb.log(
                 {
@@ -208,36 +233,47 @@ class Evaler:
                 step=i,
             )
             '''
-        total_loss = total_loss/self.step
-        #prog.set_description(f"total_loss: {total_loss:.3f}")
-        print()
-        print(f"total_loss: {total_loss:.3f}")
-        print("========================================")
 
+            if (i + 1) % self.grad == 0:
+                self.scaler.step(self.opt)
+                self.scaler.update()
+                self.opt.zero_grad()
 
+            if i % 1000 == 0:
+                temp_model = copy.deepcopy(self.model)
+                temp_model.save_pretrained(
+                    save_directory = self.target_dir+"/"+str(self.learning_rate)+"/"+str(i)
+                )
+                del temp_model
+                torch.cuda.empty_cache()
+
+        #Final ckpt
+        temp_model = copy.deepcopy(self.model)
+        temp_model.save_pretrained(
+            save_directory = self.target_dir+"/"+str(self.learning_rate)+"/"+str(i)
+        )
+        del temp_model
+        torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--llm', type=str, default="EleutherAI/pythia-70m", help='llm')
+    parser.add_argument('--llm', type=str, default="LLM360/CrystalCoder", help='llm')
     parser.add_argument('--max_tokens', type=int, default=1024, help='max_length')
     parser.add_argument('--learning_rate', type=float, default=3e-5, help='learning_rate')
     parser.add_argument('--weight_decay', type=float, default=0, help='weight_decay')
     parser.add_argument('--batch_size', type=int, default=16, help='batch_size')
-    parser.add_argument('--target_dir', type=str, default=os.getcwd()+"/../checkpoint/pythia-70m", help='target_dir')
+    parser.add_argument('--target_dir', type=str, default=os.getcwd()+"/../checkpoint/CrystalCoder/CrystalCoder_phase1_checkpoint_055500", help='target_dir')
 
     parser.add_argument('--cache_dir', type=str, default=os.getcwd()+"/../cache", help='cache_dir')
-    #../EleutherAI/pythia-70m/
-    # config.json  generation_config.json  pytorch_model.bin
-    parser.add_argument('--checkpoint', type=str, default=os.getcwd()+"/../checkpoint/", help='checkpoint')
     parser.add_argument('--cpus', type=int, default = cpu_count(), help='cpus')
 
     parser.add_argument('--device', type=str, default = "cuda", help='device')
+    parser.add_argument('--revision', type=str, default = "CrystalCoder_phase1_checkpoint_055500", help='revision')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     args = parser.parse_args()
-    args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
 
-    evaler = Evaler(args)
-    evaler.eval()
+    trainer = Trainer(args)
+    trainer.train()
