@@ -12,12 +12,13 @@ import bitsandbytes as bnb
 from datasets import load_dataset
 from transformers import GPTNeoXForCausalLM
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXAttention
-from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM
 import argparse
 import os
 from multiprocessing import cpu_count
 import shutil
 import math
+
 
 # split data, 1:9
 # add ppl
@@ -70,6 +71,7 @@ class DatasetWrapper(IterableDataset):
 
 class Distiller:
     def __init__(self, parser):
+
         #self.max_tokens = 2**13
         self.llm = parser.llm
         self.max_tokens = parser.max_tokens
@@ -84,6 +86,7 @@ class Distiller:
         self.target_dir = parser.target_dir
         self.revision = parser.revision
         self.dataset = DatasetWrapper(self.max_tokens, self.cache_dir)
+        self.distill_model_config = parser.distill_model_config
         #tensor([  50,   27,  187,  ..., 5471, 1422, 1912])
         #torch.Size([1024])
 
@@ -97,18 +100,28 @@ class Distiller:
         )
         self.eval_max_batch = math.ceil(self.loader.dataset.__eval_size__()/self.batch_size)
         self.train_max_batch = math.ceil(self.loader.dataset.__train_size__()/self.batch_size)
-        ###
-        # Tune code
-        self.model = model = AutoModelForCausalLM.from_pretrained(
+
+
+
+        #config = AutoConfig.from_pretrained('LLM360/CrystalCoder', trust_remote_code=True)
+        #config.save_pretrained('../distill-crystalcoder-config')
+
+
+        config = AutoConfig.from_pretrained(self.distill_model_config, trust_remote_code=True)
+        self.distill_model = AutoModelForCausalLM.from_config(
+            config
+        ).to(self.device)
+
+        self.model = AutoModelForCausalLM.from_pretrained(
             self.llm,
             revision = self.revision,
             cache_dir = self.cache_dir,
             trust_remote_code=True
         ).to(self.device)
-        ###
 
         self.show_params()
 
+        self.distill_model = self.distill_model.train()
         self.model = self.model.eval()
 
     def show_params(self):
@@ -139,7 +152,7 @@ class Distiller:
             (ln_f): LayerNorm((4096,), eps=1e-05, elementwise_affine=True)
         )
         (lm_head): Linear(in_features=4096, out_features=32032, bias=False)
-        ) 
+        )
         '''
         model = self.model
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -150,6 +163,7 @@ class Distiller:
         print("Params:", params - emb_params)
         print("Params (incl. embeddings):", params)
         print("Trainable params:", trainable_params)
+
 
     #def train_step(self, batch):
     def distill_step(self, batch):
@@ -244,6 +258,7 @@ if __name__ == "__main__":
     parser.add_argument('--cpus', type=int, default = cpu_count(), help='cpus')
     parser.add_argument('--device', type=str, default = "cuda", help='device')
     parser.add_argument('--revision', type=str, default = "CrystalCoder_phase1_checkpoint_055500", help='revision')
+    parser.add_argument('--distill_model_config', type=str, default = "", help='distill_model_config')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

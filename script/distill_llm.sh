@@ -13,8 +13,6 @@ CUDA_VISIBLE_DEVICES=0 python3 ../code/distill_llm.py \
     --weight_decay 0 \
     --batch_size 1 \
     --revision $VERSION \
-    --target_dir "../checkpoint/"$LLM"/"$VERSION
-
-
-
+    --target_dir "../checkpoint/EleutherAI/"$LLM \
+    --distill_model_config "../distill-crystalcoder-config"
 

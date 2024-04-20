@@ -8,3 +8,6 @@ matplotlib==3.8.3
 
 # install megatron-lm
 # https://huggingface.co/docs/accelerate/en/usage_guides/megatron_lm
+
+## pip install
+# code/modelzoo/req/requirements.txt
