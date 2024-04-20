@@ -1,5 +1,4 @@
 import copy
-
 import torch
 import torch.nn.functional as F
 import torch.backends.cuda as cuda
@@ -123,8 +122,18 @@ class Distiller:
 
         self.show_params()
 
-        self.distill_model = self.distill_model.train()
+        self.distill_model = distill_model = self.distill_model.train()
         self.model = self.model.eval()
+
+        self.opt = bnb.optim.Lion(
+            params=distill_model.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
+            betas=(0.9, 0.95),
+            # optim_bits=8,
+            # fused=True,
+        )
+        self.distill_model = torch.compile(distill_model)
 
 
     def show_params(self):
@@ -181,18 +190,19 @@ class Distiller:
 
 
     #def train_step(self, batch):
-    def eval_step(self, batch):
+    def inference_step(self, batch):
         batch = batch.to(self.device)
         x, y = batch[:, :-1], batch[:, 1:]
         with torch.no_grad():
             z = self.model(x).logits
-            y = y.reshape(-1)
+            #y = y.reshape(-1)
             z = z.view(-1, z.shape[-1])
-            loss = F.cross_entropy(z, y)
-        return loss
+            #loss = F.cross_entropy(z, y)
+        #return loss
+        return z
 
 
-    def train_step(self, batch):
+    def train_step(self, batch, model_z):
         batch = batch.to(self.device)
         x, y = batch[:, :-1], batch[:, 1:]
         with torch.autocast(device_type="cuda", enabled=True):
@@ -200,9 +210,12 @@ class Distiller:
             #refer: https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=nql_1ER53oCf
             #refer: https://gist.github.com/NaxAlpha/3d69432aa81a9ab47dee70c7a16ad8a5
             z = self.distill_model(x).logits
-            y = y.reshape(-1)
+            #print(z.shape)
+            #print(model_z.shape)
+            #y = y.reshape(-1)
             z = z.view(-1, z.shape[-1])
-            loss = F.cross_entropy(z, y)
+            #loss = F.cross_entropy(z, y)
+            loss = F.cross_entropy(z, model_z)
         self.scaler.scale(loss / self.grad).backward()
         # loss is calculated using CrossEntropyLoss which averages over valid labels
         # N.B. the model only calculates loss over trg_len - 1 labels, because it internally shifts the labels
@@ -259,7 +272,7 @@ class Distiller:
         '''
 
         prog = tqdm(self.loader)
-        #self.opt.zero_grad()
+        self.opt.zero_grad()
 
         total_loss = 0
         max_i = 0
@@ -271,8 +284,8 @@ class Distiller:
             if i == stop_batch:
                 break
             self.step = i + 1
-            model_loss = self.eval_step(batch)
-            distill_model_loss = self.train_step(batch)
+            model_z = self.inference_step(batch)
+            distill_model_loss = self.train_step(batch, model_z)
             total_loss += distill_model_loss.item()
             print_loss = total_loss/self.step
             prog.set_description(f"loss: {print_loss:.3f}")
