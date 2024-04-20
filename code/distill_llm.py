@@ -311,7 +311,7 @@ if __name__ == "__main__":
     parser.add_argument('--device', type=str, default = "cuda", help='device')
     parser.add_argument('--revision', type=str, default = "CrystalCoder_phase1_checkpoint_055500", help='revision')
     parser.add_argument('--distill_model_config', type=str, default = "", help='distill_model_config')
-    parser.add_argument('--grad_step', type=int, default = 64, help='grad steps')
+    parser.add_argument('--grad_step', type=int, default=64, help='grad steps')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
