@@ -107,9 +107,11 @@ class Distiller:
         #config.save_pretrained('../distill-crystalcoder-config')
 
 
+        self.scaler = torch.cuda.amp.GradScaler()
         config = AutoConfig.from_pretrained(self.distill_model_config, trust_remote_code=True)
         self.distill_model = AutoModelForCausalLM.from_config(
-            config
+            config,
+            trust_remote_code=True
         ).to(self.device)
 
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -123,6 +125,7 @@ class Distiller:
 
         self.distill_model = self.distill_model.train()
         self.model = self.model.eval()
+
 
     def show_params(self):
         '''
@@ -154,6 +157,7 @@ class Distiller:
         (lm_head): Linear(in_features=4096, out_features=32032, bias=False)
         )
         '''
+        print("======Larger Model=========")
         model = self.model
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         emb_params = list(model.transformer.wte.parameters())
@@ -163,27 +167,70 @@ class Distiller:
         print("Params:", params - emb_params)
         print("Params (incl. embeddings):", params)
         print("Trainable params:", trainable_params)
+        print("======Distilled Model=========")
+        model = self.distill_model
+        params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        emb_params = list(model.transformer.wte.parameters())
+        emb_params += list(model.lm_head.parameters())
+        emb_params = sum(p.numel() for p in emb_params if p.requires_grad)
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print("Params:", params - emb_params)
+        print("Params (incl. embeddings):", params)
+        print("Trainable params:", trainable_params)
+        print("==============================")
 
 
     #def train_step(self, batch):
-    def distill_step(self, batch):
+    def eval_step(self, batch):
         batch = batch.to(self.device)
         x, y = batch[:, :-1], batch[:, 1:]
-        #with torch.autocast(device_type="cuda", enabled=True):
         with torch.no_grad():
-            #print("=======how to self-implement training: figure it out=========")
-            #refer: https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=nql_1ER53oCf
-            #refer: https://gist.github.com/NaxAlpha/3d69432aa81a9ab47dee70c7a16ad8a5
-
             z = self.model(x).logits
             y = y.reshape(-1)
             z = z.view(-1, z.shape[-1])
             loss = F.cross_entropy(z, y)
-        #self.scaler.scale(loss / self.grad).backward()
+        return loss
+
+
+    def train_step(self, batch):
+        batch = batch.to(self.device)
+        x, y = batch[:, :-1], batch[:, 1:]
+        with torch.autocast(device_type="cuda", enabled=True):
+            #print("=======how to self-implement training: figure it out=========")
+            #refer: https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=nql_1ER53oCf
+            #refer: https://gist.github.com/NaxAlpha/3d69432aa81a9ab47dee70c7a16ad8a5
+            z = self.distill_model(x).logits
+            y = y.reshape(-1)
+            z = z.view(-1, z.shape[-1])
+            loss = F.cross_entropy(z, y)
+        self.scaler.scale(loss / self.grad).backward()
         # loss is calculated using CrossEntropyLoss which averages over valid labels
         # N.B. the model only calculates loss over trg_len - 1 labels, because it internally shifts the labels
         # to the left by 1.
         return loss
+
+        '''
+        batch = batch.to(self.device)
+        print("=======")
+        print(batch.size)
+        print(len(batch))
+        print("=======")
+        x, y = batch[:, :-1], batch[:, 1:]
+        print(x.shape)
+        print("-----")
+        print(y.shape)
+        print("-----")
+        exit()
+        with torch.autocast(device_type="cuda", enabled=True):
+            z = self.model(x).logits
+            y = y.reshape(-1)
+            #print(z.shape) #torch.Size([1, 1023, 50304])
+            #print(y.shape) #torch.Size([1023])
+            z = z.view(-1, z.shape[-1])
+            loss = F.cross_entropy(z, y)
+        self.scaler.scale(loss / self.grad).backward()
+        return loss
+        '''
 
 
 
@@ -192,7 +239,7 @@ class Distiller:
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
         '''
-        target_log = "../log/"+str(finetune_llm.py)+"/"+str(self.learning_rate)
+        target_log = "../log/"+str(self.target_dir)+"/"+str(self.learning_rate)
         if os.path.isdir(target_log+"/wandb"):
             # delete dir
             shutil.rmtree(target_log+"/wandb")
@@ -224,8 +271,9 @@ class Distiller:
             if i == stop_batch:
                 break
             self.step = i + 1
-            loss = self.train_step(batch)
-            total_loss += loss.item()
+            model_loss = self.eval_step(batch)
+            distill_model_loss = self.train_step(batch)
+            total_loss += distill_model_loss.item()
             print_loss = total_loss/self.step
             prog.set_description(f"loss: {print_loss:.3f}")
             #max_i = i
@@ -237,6 +285,10 @@ class Distiller:
                 step=i,
             )
             '''
+            if (i + 1) % self.grad == 0:
+                self.scaler.step(self.opt)
+                self.scaler.update()
+                self.opt.zero_grad()
         total_loss = total_loss/self.step
         #prog.set_description(f"total_loss: {total_loss:.3f}")
         print()
@@ -259,6 +311,7 @@ if __name__ == "__main__":
     parser.add_argument('--device', type=str, default = "cuda", help='device')
     parser.add_argument('--revision', type=str, default = "CrystalCoder_phase1_checkpoint_055500", help='revision')
     parser.add_argument('--distill_model_config', type=str, default = "", help='distill_model_config')
+    parser.add_argument('--grad_step', type=int, default = 64, help='grad steps')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

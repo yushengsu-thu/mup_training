@@ -192,7 +192,7 @@ class Trainer:
     def train(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
-        target_log = "../log/"+str(finetune_llm.py)+"/"+str(self.learning_rate)
+        target_log = "../log/"+str(self.target_dir)+"/"+str(self.learning_rate)
         if os.path.isdir(target_log+"/wandb"):
             # delete dir
             shutil.rmtree(target_log+"/wandb")
