@@ -1,7 +1,5 @@
-
 import copy
 import torch
-from torch import nn, optim
 import torch.nn.functional as F
 import torch.backends.cuda as cuda
 from torch.utils.data import DataLoader, IterableDataset
@@ -21,8 +19,7 @@ import shutil
 import math
 
 from accelerate import Accelerator
-import os
-import argparse
+
 
 
 # split data, 1:9
@@ -73,61 +70,9 @@ class DatasetWrapper(IterableDataset):
             yield tokens
 
 
-class LargerModel:
-    def __init__(self, parser):
-        self.llm = parser.llm
-        self.max_tokens = parser.max_tokens
-        self.grad = 64
-        self.step = 0
-        self.learning_rate = parser.learning_rate
-        self.weight_decay = parser.weight_decay
-        self.batch_size = parser.batch_size
-        self.cache_dir = parser.cache_dir
-        self.cpus = parser.cpus
-        self.device = parser.device
-        self.target_dir = parser.target_dir
-        self.revision = parser.revision
-        self.distill_model_config = parser.distill_model_config
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.llm,
-            revision = self.revision,
-            cache_dir = self.cache_dir,
-            trust_remote_code=True
-        )
-    def forward(self, x):
-        x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=True)
-        return z
-    
-class SmallerModel:
-    def __init__(self, parser):
-        self.llm = parser.llm
-        self.max_tokens = parser.max_tokens
-        self.grad = 64
-        self.step = 0
-        self.learning_rate = parser.learning_rate
-        self.weight_decay = parser.weight_decay
-        self.batch_size = parser.batch_size
-        self.cache_dir = parser.cache_dir
-        self.cpus = parser.cpus
-        self.device = parser.device
-        self.target_dir = parser.target_dir
-        self.revision = parser.revision
-        self.distill_model_config = parser.distill_model_config
-        config = AutoConfig.from_pretrained(self.distill_model_config, trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_config(
-            config,
-            trust_remote_code=True
-        ) 
-    def forward(self, x):
-        x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=True)
-        return z
-
-
 
 class Distiller:
-    def __init__(self, parser, larger_model, smaller_model):
+    def __init__(self, parser):
 
         #self.max_tokens = 2**13
         self.llm = parser.llm
@@ -142,12 +87,8 @@ class Distiller:
         self.device = parser.device
         self.target_dir = parser.target_dir
         self.revision = parser.revision
-        self.distill_model_config = parser.distill_model_config
-
         self.dataset = DatasetWrapper(self.max_tokens, self.cache_dir)
-
-        self.larger_model = larger_model
-        self.smaller_model = smaller_model
+        self.distill_model_config = parser.distill_model_config
         #tensor([  50,   27,  187,  ..., 5471, 1422, 1912])
         #torch.Size([1024])
 
@@ -168,59 +109,37 @@ class Distiller:
         #config.save_pretrained('../distill-crystalcoder-config')
 
 
-        #self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.cuda.amp.GradScaler()
+        config = AutoConfig.from_pretrained(self.distill_model_config, trust_remote_code=True)
+        self.distill_model = AutoModelForCausalLM.from_config(
+            config,
+            trust_remote_code=True
+        ).to(self.device)
 
-        self.show_params(self.larger_model.model)
-        self.show_params(self.smaller_model.model)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.llm,
+            revision = self.revision,
+            cache_dir = self.cache_dir,
+            trust_remote_code=True
+        ).to(self.device)
 
-        
-        #self.distill_model = distill_model = self.distill_model.train()
-        #self.model = self.model.eval()
+        self.show_params()
 
-        '''
+        self.distill_model = distill_model = self.distill_model.train()
+        self.model = self.model.eval()
+
         self.opt = bnb.optim.Lion(
-            params=self.smaller_model.parameters(),
+            params=distill_model.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
             betas=(0.9, 0.95),
             optim_bits=8,
             #fused=True,
         )
-        '''
-        self.opt = optim.AdamW(self.smaller_model.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-        
-        #self.distill_model = torch.compile(distill_model)
-        #optimizer = optim.AdamW(self.smaller_model.parameters(), lr=self.learning_rate, weight_decay=parser.weight_decay)
-        # Add seduchler
-        
-        ###
-        '''
-        - device_placement (default: True): Automatically place the model and data on the right device (CPU or GPU).
-        - split_batches (default: False): Automatically split batches between devices in data parallelism.
-        - fp16 (default: False): Use automatic mixed precision training (floating-point 16). This is a simple way to use mixed precision without the need to configure it manually.
-        - cpu (default: False): Force the use of CPU even if GPUs are available. Useful for debugging or when GPU resources are not desired.
-        - deepspeed_plugin (default: None): Configuration for using DeepSpeed with Accelerator, which allows for efficient training on multiple GPUs, achieving high performance and reduced memory usage.
-        - mixed_precision (default: "no"): Set the mixed precision policy. Options are "no", "fp16", and "bf16". This specifies whether to use mixed precision and which type. "fp16" and "bf16" refer to half-precision and bfloat16 precision, respectively.
-        - _custom_ddp_plugin (not typically used by end users): Allows for a custom Distributed Data Parallel (DDP) plugin. This is more advanced usage for custom distributed training setups.
-        - log_with (default: ["tqdm"]): Choose the libraries to use for logging progress. By default, it uses tqdm, but other loggers can be configured.
-        - logging_dir (default: None): The directory to save logs to if you're using a logger that writes to files.
-        - dispatch_batches (default: False): This argument is for internal use, concerning how batches are distributed across devices.
-        - zero3 (default: False): Enable ZeRO Stage 3 optimization with DeepSpeed, which dramatically reduces memory usage at scale.
-        - cpu_offload (default: False): Whether to offload parts of the model or computations to the CPU, usually in combination with DeepSpeed to save GPU memory.
-        - gradient_accumulation_steps (default: 1): Number of steps to accumulate gradients before updating model parameters, which can be useful for effectively increasing the batch size without increasing the memory consumption.
-        '''
-        ###
-        
-        accelerator = Accelerator(
-            gradient_accumulation_steps=self.grad,
-        )
-        
-        self.larger_model, self.smaller_model, self.opt, self.loader= accelerator.prepare(
-            self.larger_model, self.smaller_model, self.opt, self.loader
-        )
+        self.distill_model = torch.compile(distill_model)
 
 
-    def show_params(self, model):
+    def show_params(self):
         '''
         CrystalCoderLMHeadModel(
         (transformer): CrystalCoderModel(
@@ -250,7 +169,8 @@ class Distiller:
         (lm_head): Linear(in_features=4096, out_features=32032, bias=False)
         )
         '''
-        print("======Model Para=========")
+        print("======Larger Model=========")
+        model = self.model
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         emb_params = list(model.transformer.wte.parameters())
         emb_params += list(model.lm_head.parameters())
@@ -259,8 +179,41 @@ class Distiller:
         print("Params:", params - emb_params)
         print("Params (incl. embeddings):", params)
         print("Trainable params:", trainable_params)
-        print("===========================")
+        print("======Distilled Model=========")
+        model = self.distill_model
+        params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        emb_params = list(model.transformer.wte.parameters())
+        emb_params += list(model.lm_head.parameters())
+        emb_params = sum(p.numel() for p in emb_params if p.requires_grad)
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print("Params:", params - emb_params)
+        print("Params (incl. embeddings):", params)
+        print("Trainable params:", trainable_params)
+        print("==============================")
 
+
+    #def train_step(self, batch):
+    def inference_step(self, batch):
+        batch = batch.to(self.device)
+        x, y = batch[:, :-1], batch[:, 1:]
+        '''
+        with torch.no_grad():
+            z = self.model(x).logits
+            #y = y.reshape(-1)
+            z = z.view(-1, z.shape[-1])
+            #loss = F.cross_entropy(z, y)
+        #return loss
+        return z
+        '''
+        with torch.no_grad():
+            #z = self.model(x, output_hidden_states=True).hidden_states
+            z = self.model(x, output_hidden_states=True).logits
+            #z = z.logits
+            #y = y.reshape(-1)
+            z = z.view(-1, z.shape[-1])
+            #loss = F.cross_entropy(z, y)
+        #return loss
+        return z
         '''
         return CausalLMOutputWithCrossAttentions(
             loss=loss,
@@ -272,24 +225,60 @@ class Distiller:
         )
         '''
 
-    def loss_layer(self, output_large, output_small):
-        large_hidden_states = output_large.hidden_states
-        large_hidden_states = torch.stack(large_hidden_states)
-        small_hidden_states = output_small.hidden_states  
-        small_hidden_states = torch.stack(small_hidden_states)
-        print("======")
-        print(large_hidden_states.shape) #torch.Size([33, 4, 2048, 4096])
-        print(small_hidden_states.shape) #torch.Size([33, 4, 2048, 1024])
-        # print("======")
-        # large_hidden_states = large_hidden_states.view(-1, large_hidden_states.size(-1))
-        # small_hidden_states = small_hidden_states.view(-1, small_hidden_states.size(-1))
-        # print(large_hidden_states.shape)
-        # print(small_hidden_states.shape)
-        print("======")
-        exit()
-        # calculate the loss between large_hidden_states and small_hidden_states
-        loss = torch.nn.CrossEntropyLoss()(large_hidden_states, small_hidden_states.argmax(dim=-1))
 
+    def train_step(self, batch, model_z):
+        batch = batch.to(self.device)
+        x, y = batch[:, :-1], batch[:, 1:]
+        with torch.autocast(device_type="cuda", enabled=True):
+            #print("=======how to self-implement training: figure it out=========")
+            #refer: https://colab.research.google.com/drive/1JMLa53HDuA-i7ZBmqV7ZnA3c_fvtXnx-?usp=sharing#scrollTo=nql_1ER53oCf
+            #refer: https://gist.github.com/NaxAlpha/3d69432aa81a9ab47dee70c7a16ad8a5
+            #z = self.distill_model(x, output_hidden_states=True).hidden_states
+            z = self.distill_model(x, output_hidden_states=True).logits
+            #hidden_states = z.hidden_states[-1]
+            #logits = z.logits
+            #print(z.hidden_states)
+            #print(len(z.hidden_states))
+            #print(z.shape)
+            #z = self.distill_model(x).logits
+            #print(z.shape)
+            #print(model_z.shape)
+            #y = y.reshape(-1)
+            z = z.view(-1, z.shape[-1])
+            #loss = F.cross_entropy(z, y)
+            loss = F.cross_entropy(z, model_z)
+        self.scaler.scale(loss / self.grad).backward()
+        # loss is calculated using CrossEntropyLoss which averages over valid labels
+        # N.B. the model only calculates loss over trg_len - 1 labels, because it internally shifts the labels
+        # to the left by 1.
+        return loss
+
+        '''
+        batch = batch.to(self.device)
+        print("=======")
+        print(batch.size)
+        print(len(batch))
+        print("=======")
+        x, y = batch[:, :-1], batch[:, 1:]
+        print(x.shape)
+        print("-----")
+        print(y.shape)
+        print("-----")
+        exit()
+        with torch.autocast(device_type="cuda", enabled=True):
+            z = self.model(x).logits
+            y = y.reshape(-1)
+            #print(z.shape) #torch.Size([1, 1023, 50304])
+            #print(y.shape) #torch.Size([1023])
+            z = z.view(-1, z.shape[-1])
+            loss = F.cross_entropy(z, y)
+        self.scaler.scale(loss / self.grad).backward()
+        return loss
+        '''
+
+
+
+    #def train(self):
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
@@ -314,34 +303,23 @@ class Distiller:
         '''
 
         prog = tqdm(self.loader)
-        #self.opt.zero_grad()
+        self.opt.zero_grad()
 
         total_loss = 0
         max_i = 0
         stop_batch = self.train_max_batch
-        accumulated_loss = 0.0
-         
-        self.larger_model.model.train()
-        self.smaller_model.model.train()
-        
+
         print()
         print("lr:{}".format(self.learning_rate))
         for i, batch in enumerate(prog):
             if i == stop_batch:
                 break
             self.step = i + 1
-            output_large = self.larger_model.forward(batch)
-            output_small = self.smaller_model.forward(batch)
-            loss = self.loss_layer(output_large, output_small) 
-            #model_z = self.inference_step(batch)
-            #distill_model_loss = self.train_step(batch, model_z)
-            #total_loss += distill_model_loss.item()
-            accumulated_loss += loss.item()
-            total_loss += loss.item()
-            #total_loss += loss.item()
-            #print_loss = total_loss/self.step
-            #prog.set_description(f"loss: {print_loss:.3f}")
-            prog.set_description(f"loss: {loss.item():.3f}")
+            model_z = self.inference_step(batch)
+            distill_model_loss = self.train_step(batch, model_z)
+            total_loss += distill_model_loss.item()
+            print_loss = total_loss/self.step
+            prog.set_description(f"loss: {print_loss:.3f}")
             #max_i = i
             '''
             wandb.log(
@@ -351,25 +329,10 @@ class Distiller:
                 step=i,
             )
             '''
-            # # 检查参数是否变化
-            # for initial_param, trained_param in zip(initial_teacher_params, teacher_model.parameters()):
-            #     if not torch.equal(initial_param, trained_param):
-            #         print("Parameter changed!")
-            #     else:
-            #         print("Parameter unchanged.")
-
-            self.opt.zero_grad()
-            self.accelerator.backward(loss)
-            
-            
             if (i + 1) % self.grad == 0:
-                self.opt.step()
-                prog.set_description(f"accumulated_loss: {total_loss:.3f}")
-                accumulated_loss = 0.0
-                
-                # self.scaler.step(self.opt)
-                # self.scaler.update()
-                # self.opt.zero_grad()
+                self.scaler.step(self.opt)
+                self.scaler.update()
+                self.opt.zero_grad()
         total_loss = total_loss/self.step
         #prog.set_description(f"total_loss: {total_loss:.3f}")
         print()
@@ -378,7 +341,8 @@ class Distiller:
 
 
 
-def main():
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--llm', type=str, default="LLM360/CrystalCoder", help='llm')
     parser.add_argument('--max_tokens', type=int, default=1024, help='max_length')
@@ -398,12 +362,8 @@ def main():
     args = parser.parse_args()
     #args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
 
-    larger_model = LargerModel(args)
-    smaller_model = SmallerModel(args)    
-
-    distiller = Distiller(args, larger_model, smaller_model)
+    distiller = Distiller(args)
     distiller.distill()
 
     
-if __name__ == "__main__":  
-    main()
+    
