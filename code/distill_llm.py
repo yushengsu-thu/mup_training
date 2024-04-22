@@ -286,6 +286,7 @@ class Distiller:
         # print(large_hidden_states.shape)
         # print(small_hidden_states.shape)
         print("======")
+        print("======")
         exit()
         # calculate the loss between large_hidden_states and small_hidden_states
         loss = torch.nn.CrossEntropyLoss()(large_hidden_states, small_hidden_states.argmax(dim=-1))
