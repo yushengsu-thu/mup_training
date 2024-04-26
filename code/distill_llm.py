@@ -249,7 +249,7 @@ class SmallerModel:
     def _subsample_embeddings(self, embeddings):
         #print(embeddings.shape)
         indices = torch.arange(0, embeddings.size(0), self.reduction_factor)
-        subsampled_matrix = embeddings[indices] * self.reduction_factor
+        subsampled_matrix = embeddings[indices]
         #print(subsampled_matrix.shape)
         return subsampled_matrix
 
@@ -265,11 +265,11 @@ class SmallerModel:
         if matrix.size(0) > matrix.size(1):
             # Subsample only along the larger dimension
             indices = torch.arange(0, matrix.size(0), self.reduction_factor)
-            subsampled_matrix = matrix[indices, :] * self.reduction_factor
+            subsampled_matrix = matrix[indices, :]
             return subsampled_matrix 
         else:
             indices = torch.arange(0, matrix.size(1), self.reduction_factor)
-            subsampled_matrix = matrix[:, indices] * self.reduction_factor
+            subsampled_matrix = matrix[:, indices]
             return subsampled_matrix 
 
     def forward(self, x):
