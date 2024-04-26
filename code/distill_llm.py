@@ -94,6 +94,7 @@ class LargerModel:
             cache_dir = self.cache_dir,
             trust_remote_code=True
         )
+
     def forward(self, x):
         x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=True)
@@ -154,7 +155,7 @@ class SmallerModel:
 
 
 
-class ModelReducer:
+class SmallerModel:
     def __init__(self, parser):
         self.llm = parser.llm
         self.max_tokens = parser.max_tokens
@@ -170,13 +171,19 @@ class ModelReducer:
         self.revision = parser.revision
         self.distill_model_config = parser.distill_model_config
         self.reduction_factor = parser.reduction_factor
+        model = AutoModelForCausalLM.from_pretrained(
+            self.llm,
+            revision = self.revision,
+            cache_dir = self.cache_dir,
+            trust_remote_code=True
+        )
+        self.model = self.reduce(model)
+        del model
+
     
-    # def __init__(self, model_name, reduction_factor=2):
-    #     self.model = AutoModel.from_pretrained(self.llm)
-    #     self.reduction_factor = reduction_factor
-    
-    def reduce(self):
+    def reduce(self, model):
         # Reduce the model dimensions by the reduction factor
+        #new_model = self.model  # This would be a new model structure with adapted dimensions
         new_model = self.model  # This would be a new model structure with adapted dimensions
         
         for name, param in self.model.named_parameters():
@@ -190,10 +197,36 @@ class ModelReducer:
                 # For square matrices, subsample and scale
                 new_param = self._subsample_and_scale(param)
             else:
-                new_param = param  # Copy over other parameters as is
+                #new_param = param  # Copy over other parameters as is
+                continue
+            
+            
+            
+            # Replace dot with underscore in parameter name
+            #name = name.replace(".", "_")
             
             # Set the new parameters to the model
-            setattr(new_model, name, torch.nn.Parameter(new_param))
+            # setattr(new_model, name, torch.nn.Parameter(new_param))
+            
+            # Update the state_dict with new parameters
+            state_dict[name] = new_param
+        
+        # Load the modified state_dict back to the model
+        self.model.load_state_dict(state_dict, strict=False)
+
+        #self.model = new_model
+
+        print("==========")
+        for name, p in self.model.named_parameters():
+            if "transformer_h_0" in name:
+                print(f"Name: {name}")
+                print(p)
+                print(p.shape)
+                print("------")
+
+        print("==========")
+        exit() 
+
 
         self.model = new_model
         #return new_model
@@ -213,88 +246,6 @@ class ModelReducer:
         return z
 
 
-'''
-class SmallerModel:
-
-    def __init__(self, parser):
-        self.llm = parser.llm
-        self.max_tokens = parser.max_tokens
-        self.grad = 64
-        self.step = 0
-        self.learning_rate = parser.learning_rate
-        self.weight_decay = parser.weight_decay
-        self.batch_size = parser.batch_size
-        self.cache_dir = parser.cache_dir
-        self.cpus = parser.cpus
-        self.device = parser.device
-        self.target_dir = parser.target_dir
-        self.revision = parser.revision
-        self.distill_model_config = parser.distill_model_config
-        self.reduction_factor = parser.reduction_factor
-        # config = AutoConfig.from_pretrained(self.distill_model_config, trust_remote_code=True)
-        # self.model = AutoModelForCausalLM.from_config(
-        #     config,
-        #     trust_remote_code=True
-        # ) 
-        self.large_model = AutoModelForCausalLM.from_pretrained(
-            self.llm,
-            revision = self.revision,
-            cache_dir = self.cache_dir,
-            trust_remote_code=True
-        )
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.llm,
-            n_embd = self.large_model.config.n_embd // self.reduction_factor,
-            #n_inner = model.config.n_inner // self.reduction_factor,
-            revision = self.revision,
-            cache_dir = self.cache_dir,
-            trust_remote_code=True,
-            ignore_mismatched_sizes=True
-        )
-
-
-    def subsample_weight(self, weight):
-        """Subsample a weight tensor by the reduction factor."""
-        indices = torch.arange(0, weight.size(0), step=self.reduction_factor)
-        if len(weight.shape) == 1:  # For bias vectors
-            return weight[indices]
-        else:  # For matrices, subsample rows
-            return weight[indices, :]
-
-    def adjust_and_scale(self, matrix):
-        """Adjust and scale weight matrices for dimensions d x d."""
-        subsampled = self.subsample_weight(matrix)[:self.small_model.config.n_embd, :self.small_model.config.n_embd]
-        return 2 * subsampled  # You might want to reconsider this scaling factor if it results in too large values.
-
-    def initialize_small_model_weights(self):
-        """Initialize weights for the small model by downsizing the large model's weights."""
-        # Positional and token embeddings
-        self.small_model.transformer.wpe.weight.data = self.subsample_weight(
-            self.large_model.transformer.wpe.weight.data
-        )
-        self.small_model.transformer.wte.weight.data = self.subsample_weight(
-            self.large_model.transformer.wte.weight.data
-        )
-
-        # Layer-specific matrices
-        for (small_layer, large_layer) in zip(self.small_model.transformer.h, self.large_model.transformer.h):
-            # Self-attention layers
-            small_layer.attn.c_attn.weight.data = self.adjust_and_scale(large_layer.attn.c_attn.weight.data)
-            small_layer.attn.c_proj.weight.data = self.subsample_weight(large_layer.attn.c_proj.weight.data)
-
-            # MLP layers
-            small_layer.mlp.c_fc.weight.data = self.adjust_and_scale(large_layer.mlp.c_fc.weight.data)
-            small_layer.mlp.c_proj.weight.data = self.subsample_weight(large_layer.mlp.c_proj.weight.data)
-
-    def save_small_model(self, path):
-        """Save the small model to a specified path."""
-        self.small_model.save_pretrained(path)
-
-
-    #reducer = ModelReducer()
-    #reducer.initialize_small_model_weights()
-    #reducer.save_small_model('path_to_save_small_model')
-'''
 
 
 class Distiller:
@@ -601,7 +552,7 @@ def main():
     args = parser.parse_args()
     #args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
 
-    smaller_model = ModelReducer(args)
+    smaller_model = SmallerModel(args)
 
     larger_model = LargerModel(args)
 

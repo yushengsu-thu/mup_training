@@ -20,7 +20,7 @@
   "mup_output_alpha": 2.22,
   "mup_scale_qk_dot_by_d": true,
   "mup_width_scale": 0.0625,
-  "n_embd": 1024,
+  "n_embd": 4096,
   "n_head": 32,
   "n_inner": 10922,
   "n_layer": 32,
