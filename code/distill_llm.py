@@ -195,17 +195,22 @@ class ModelReducer:
             # Set the new parameters to the model
             setattr(new_model, name, torch.nn.Parameter(new_param))
 
-        return new_model
+        self.model = new_model
+        #return new_model
 
     def _subsample_embeddings(self, embeddings):
-        indices = torch.arange(0, embeddings.size(0), 2)
+        indices = torch.arange(0, embeddings.size(0), self.reduction_factor)
         return embeddings[indices]
 
     def _subsample_and_scale(self, matrix):
-        indices = torch.arange(0, matrix.size(0), 2)
+        indices = torch.arange(0, matrix.size(0), self.reduction_factor)
         subsampled_matrix = matrix[indices][:, indices]
         return subsampled_matrix * self.reduction_factor
 
+    def forward(self, x):
+        x = x.to(self.model.device)
+        z = self.model(x, output_hidden_states=True)
+        return z
 
 
 '''
