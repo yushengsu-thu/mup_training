@@ -16,6 +16,7 @@ python3 ../code/distill_llm.py \
     --revision $VERSION \
     --grad_step 8 \
     --target_dir "../checkpoint/EleutherAI/"$LLM \
+    --reduction_factor 4 \
     --distill_model_config "../distill-crystalcoder-config"
 
 

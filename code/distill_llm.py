@@ -99,6 +99,7 @@ class LargerModel:
         z = self.model(x, output_hidden_states=True)
         return z
     
+'''
 class SmallerModel:
     def __init__(self, parser):
         self.llm = parser.llm
@@ -119,11 +120,176 @@ class SmallerModel:
             config,
             trust_remote_code=True
         ) 
+
+        print("==========")
+        for name, p in self.model.named_parameters():
+            if "transformer.h.0" in name:
+                print(f"Name: {name}")
+                print(p)
+                print(p.shape)
+                print("------")
+                #exit()
+                
+            
+            if "transformer.h.31.mlp.c_proj.weight" == name:
+                print("!!!!!!!!!")
+                print(p)
+                print(p.shape)
+                #print(p[,0])
+                #print(p[,0].shape)
+                print("!!!!!!!!!")
+            #print(f"Name: {name}")
+            #print(p)
+            #print(p.shape)
+            #print("------")
+            #exit()
+        print("==========")
+        exit()
+        
     def forward(self, x):
         x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=True)
         return z
+'''
 
+
+
+class ModelReducer:
+    def __init__(self, parser):
+        self.llm = parser.llm
+        self.max_tokens = parser.max_tokens
+        self.grad = 64
+        self.step = 0
+        self.learning_rate = parser.learning_rate
+        self.weight_decay = parser.weight_decay
+        self.batch_size = parser.batch_size
+        self.cache_dir = parser.cache_dir
+        self.cpus = parser.cpus
+        self.device = parser.device
+        self.target_dir = parser.target_dir
+        self.revision = parser.revision
+        self.distill_model_config = parser.distill_model_config
+        self.reduction_factor = parser.reduction_factor
+    
+    # def __init__(self, model_name, reduction_factor=2):
+    #     self.model = AutoModel.from_pretrained(self.llm)
+    #     self.reduction_factor = reduction_factor
+    
+    def reduce(self):
+        # Reduce the model dimensions by the reduction factor
+        new_model = self.model  # This would be a new model structure with adapted dimensions
+        
+        for name, param in self.model.named_parameters():
+            if 'embeddings' in name:
+                # Assuming this is the positional embedding matrix
+                if 'position_embeddings' in name:
+                    new_param = self._subsample_embeddings(param)
+                else:
+                    new_param = param  # Other embeddings might not need subsampling
+            elif param.dim() == 2 and (param.size(0) == param.size(1)):
+                # For square matrices, subsample and scale
+                new_param = self._subsample_and_scale(param)
+            else:
+                new_param = param  # Copy over other parameters as is
+            
+            # Set the new parameters to the model
+            setattr(new_model, name, torch.nn.Parameter(new_param))
+
+        return new_model
+
+    def _subsample_embeddings(self, embeddings):
+        indices = torch.arange(0, embeddings.size(0), 2)
+        return embeddings[indices]
+
+    def _subsample_and_scale(self, matrix):
+        indices = torch.arange(0, matrix.size(0), 2)
+        subsampled_matrix = matrix[indices][:, indices]
+        return subsampled_matrix * self.reduction_factor
+
+
+
+'''
+class SmallerModel:
+
+    def __init__(self, parser):
+        self.llm = parser.llm
+        self.max_tokens = parser.max_tokens
+        self.grad = 64
+        self.step = 0
+        self.learning_rate = parser.learning_rate
+        self.weight_decay = parser.weight_decay
+        self.batch_size = parser.batch_size
+        self.cache_dir = parser.cache_dir
+        self.cpus = parser.cpus
+        self.device = parser.device
+        self.target_dir = parser.target_dir
+        self.revision = parser.revision
+        self.distill_model_config = parser.distill_model_config
+        self.reduction_factor = parser.reduction_factor
+        # config = AutoConfig.from_pretrained(self.distill_model_config, trust_remote_code=True)
+        # self.model = AutoModelForCausalLM.from_config(
+        #     config,
+        #     trust_remote_code=True
+        # ) 
+        self.large_model = AutoModelForCausalLM.from_pretrained(
+            self.llm,
+            revision = self.revision,
+            cache_dir = self.cache_dir,
+            trust_remote_code=True
+        )
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.llm,
+            n_embd = self.large_model.config.n_embd // self.reduction_factor,
+            #n_inner = model.config.n_inner // self.reduction_factor,
+            revision = self.revision,
+            cache_dir = self.cache_dir,
+            trust_remote_code=True,
+            ignore_mismatched_sizes=True
+        )
+
+
+    def subsample_weight(self, weight):
+        """Subsample a weight tensor by the reduction factor."""
+        indices = torch.arange(0, weight.size(0), step=self.reduction_factor)
+        if len(weight.shape) == 1:  # For bias vectors
+            return weight[indices]
+        else:  # For matrices, subsample rows
+            return weight[indices, :]
+
+    def adjust_and_scale(self, matrix):
+        """Adjust and scale weight matrices for dimensions d x d."""
+        subsampled = self.subsample_weight(matrix)[:self.small_model.config.n_embd, :self.small_model.config.n_embd]
+        return 2 * subsampled  # You might want to reconsider this scaling factor if it results in too large values.
+
+    def initialize_small_model_weights(self):
+        """Initialize weights for the small model by downsizing the large model's weights."""
+        # Positional and token embeddings
+        self.small_model.transformer.wpe.weight.data = self.subsample_weight(
+            self.large_model.transformer.wpe.weight.data
+        )
+        self.small_model.transformer.wte.weight.data = self.subsample_weight(
+            self.large_model.transformer.wte.weight.data
+        )
+
+        # Layer-specific matrices
+        for (small_layer, large_layer) in zip(self.small_model.transformer.h, self.large_model.transformer.h):
+            # Self-attention layers
+            small_layer.attn.c_attn.weight.data = self.adjust_and_scale(large_layer.attn.c_attn.weight.data)
+            small_layer.attn.c_proj.weight.data = self.subsample_weight(large_layer.attn.c_proj.weight.data)
+
+            # MLP layers
+            small_layer.mlp.c_fc.weight.data = self.adjust_and_scale(large_layer.mlp.c_fc.weight.data)
+            small_layer.mlp.c_proj.weight.data = self.subsample_weight(large_layer.mlp.c_proj.weight.data)
+
+    def save_small_model(self, path):
+        """Save the small model to a specified path."""
+        self.small_model.save_pretrained(path)
+
+
+    #reducer = ModelReducer()
+    #reducer.initialize_small_model_weights()
+    #reducer.save_small_model('path_to_save_small_model')
+'''
 
 
 class Distiller:
@@ -211,6 +377,24 @@ class Distiller:
         '''
         ###
         
+
+        ## I want to uniformly sampling d/2 coordinates from each layers of self.larger_model and use them to initlize the self.smaller_model
+        # I want to uniformly sampling d/2 coordinates from each layers of self.larger_model and use them to initlize the self.smaller_model
+        '''
+        d_l = self.smaller_model.model.config.hidden_size
+        d = self.smaller_model.model.config.hidden_size
+        print(d_l, d) 
+        for layer_large, layer_small in zip(self.larger_model.model.h, self.smaller_model.model.h):
+            layer_large_size = layer_large.mlp.c_proj.out_channels
+            layer_small_size = layer_small.mlp.c_proj.out_channels
+            indices = torch.randperm(layer_large_size)[:d//2]
+            layer_small.mlp.c_proj.weight.data[:, indices] = layer_large.mlp.c_proj.weight.data[:, indices]
+            print(layer_large_size, layer_small_size)
+        print(111111)
+        exit()
+        '''
+        
+        
         accelerator = Accelerator(
             gradient_accumulation_steps=self.grad,
         )
@@ -250,6 +434,8 @@ class Distiller:
         (lm_head): Linear(in_features=4096, out_features=32032, bias=False)
         )
         '''
+
+
         print("======Model Para=========")
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         emb_params = list(model.transformer.wte.parameters())
@@ -260,6 +446,14 @@ class Distiller:
         print("Params (incl. embeddings):", params)
         print("Trainable params:", trainable_params)
         print("===========================")
+
+        
+        '''
+        for name, param in model.named_parameters():
+            print(f"{name}: {param.size()}")
+        print("===========================")
+        '''
+
 
         '''
         return CausalLMOutputWithCrossAttentions(
@@ -393,14 +587,18 @@ def main():
     parser.add_argument('--revision', type=str, default = "CrystalCoder_phase1_checkpoint_055500", help='revision')
     parser.add_argument('--distill_model_config', type=str, default = "", help='distill_model_config')
     parser.add_argument('--grad_step', type=int, default=64, help='grad steps')
+    parser.add_argument('--reduction_factor', type=int, default=4, help='reduction_factor')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    
 
     args = parser.parse_args()
     #args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
 
+    smaller_model = ModelReducer(args)
+
     larger_model = LargerModel(args)
-    smaller_model = SmallerModel(args)    
 
     distiller = Distiller(args, larger_model, smaller_model)
     distiller.distill()
