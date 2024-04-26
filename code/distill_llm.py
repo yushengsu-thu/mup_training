@@ -219,6 +219,12 @@ class SmallerModel:
             if 'position_embeddings' in name:
                 # Subsample positional embeddings uniformly
                 state_dict[name] = self._subsample_embeddings(param)
+
+            '''
+            elif param.dim() == 2 and param.size(0) == param.size(1):
+                # Subsample and scale square matrices
+                new_state_dict[name] = self._subsample_and_scale(param)
+            '''
             elif param.dim() == 2:
                 if param.size(0) == param.size(1):
                     # Subsample and scale square matrices
