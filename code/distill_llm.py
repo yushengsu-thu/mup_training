@@ -126,78 +126,165 @@ class SmallerModel:
         # )
        
         
-        # self.model_config = AutoConfig.from_pretrained(self.llm, trust_remote_code=True)
+        self.model_config = AutoConfig.from_pretrained(self.llm, trust_remote_code=True)
         # self.model_config.rotary_dim = int(self.model_config.rotary_dim / self.reduction_factor)
-        # self.model_config.n_embd = int(self.model_config.n_embd / self.reduction_factor)
-        # self.model_config.n_inner = int(self.model_config.n_inner / self.reduction_factor)
+        self.model_config.n_embd = int(self.model_config.n_embd / self.reduction_factor)
+        self.model_config.n_inner = int(self.model_config.n_inner / self.reduction_factor)
         # self.model_config.hidden_size = int(self.model_config.hidden_size / self.reduction_factor)
         #model_config.num_attention_heads = int(model_config.num_attention_heads / self.reduction_factor)
         #model_config.intermediate_size = int(model_config.intermediate_size / self.reduction_factor)
 
-        # self.model = AutoModelForCausalLM.from_config(
-        #     self.model_config,
+        self.model = AutoModelForCausalLM.from_config(
+            self.model_config,
+            trust_remote_code=True
+        )
+        
+        # for name, param in self.model.named_parameters():
+        #    print(name, param.shape)
+
+        # exit()
+        
+        
+        # self.model = AutoModelForCausalLM.from_pretrained(
+        #     self.llm,
+        #     revision = self.revision,
+        #     cache_dir = self.cache_dir,
         #     trust_remote_code=True
-        # ).to(self.device)
-        self.model = AutoModelForCausalLM.from_pretrained(
+        # ) 
+
+        # downsampling the weights 
+        self.reduce()
+
+        #for name, param in self.model.named_parameters():
+        #    print(name, param.shape)
+    
+    def reduce(self):
+        # # Create a copy of the state_dict for modifications
+
+        model_original = AutoModelForCausalLM.from_pretrained(
             self.llm,
             revision = self.revision,
             cache_dir = self.cache_dir,
             trust_remote_code=True
         ) 
-
-        # downsampling the weights 
-        self.reduce()
-
-    
-    def reduce(self):
-        # # Create a copy of the state_dict for modifications
+        
         state_dict = self.model.state_dict()
         
         # Iterate over the state_dict and modify parameters
         # for name, param in model_original.named_parameters():
-        for name, param in self.model.named_parameters():
+        #count=0
+        for (name_original, param_original), (name, param) in zip(model_original.named_parameters(), self.model.named_parameters()):
+            #print(name_original)
             if param.dim() == 2:
                 # 2D weight matrices
                 if param.size(0) == param.size(1):
                     # Subsample and scale square matrices
-                    # state_dict[name] = self._subsample_and_scale(param)
-                    param.data = self._subsample_and_scale(param) 
+                    #param.data = self._subsample_and_scale(param_original, param) 
+                    state_dict[name] = self._subsample_and_scale(param_original, param) 
                 else:
                     # Handle rectangular matrices by subsampling only the larger dimension
-                    # state_dict[name] = self._subsample_rectangular_matrices(param)
-                    param.data = self._subsample_rectangular_matrices(param)
+                    if "wte" in name:
+                        #param.data = self._subsample_embeddings_dim1(param_original, param)
+                        state_dict[name] = self._subsample_embeddings_dim1(param_original, param)
+                    else:
+                        #param.data = self._subsample_embeddings_dim(param_original, param)
+                        state_dict[name] = self._subsample_embeddings_dim(param_original, param)
             else:
                 # embedding, bias, .... (1D)
-                # state_dict[name] = self._subsample_embeddings(param)
-                param.data = self._subsample_embeddings(param)
+                #param.data = self._subsample_embeddings(param_original, param)
+                state_dict[name] = self._subsample_embeddings(param_original, param)
+
+        #del model_original
         # Load the modified state_dict back to the model
-        # self.model.load_state_dict(state_dict, strict=False)   
+        self.model.load_state_dict(state_dict, strict=True) 
+
         
-    def _subsample_embeddings(self, embeddings):
+    # 1 D
+    def _subsample_embeddings(self, matrix_original, matrix_target):
         #print(embeddings.shape)
-        indices = torch.arange(0, embeddings.size(0), self.reduction_factor)
-        subsampled_matrix = embeddings[indices]
-        #print(subsampled_matrix.shape)
+        indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
+        out_dim = int(indices.shape[0])
+        target_d0 = int(matrix_target.shape[0])
+        if out_dim == target_d0: 
+            pass
+        else:
+            indices = indices[:target_d0]
+        subsampled_matrix = matrix_original[indices]
         return subsampled_matrix
 
-    def _subsample_and_scale(self, matrix):
+    def _subsample_and_scale(self, matrix_original, matrix_target):
         #print(matrix.shape)
-        indices = torch.arange(0, matrix.size(0), self.reduction_factor)
-        subsampled_matrix = matrix[indices][:, indices] * self.reduction_factor
-        #print(subsampled_matrix.shape) 
+        indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
+        #subsampled_matrix = matrix_original[indices][:, indices] * self.reduction_factor
+        out_dim = int(indices.shape[0])
+        target_d0, target_d1 = int(matrix_target.shape[0]), int(matrix_target.shape[1]) 
+        if out_dim == target_d0: 
+            pass
+        else:
+            indices = indices[:target_d0]
+        if out_dim == target_d1:
+            pass
+        else:
+            indices = indices[:target_d1]
+        subsampled_matrix = matrix_original[indices, :][:, indices] * self.reduction_factor 
         return subsampled_matrix 
 
-    def _subsample_rectangular_matrices(self, matrix):
+    def _subsample_embeddings_dim(self, matrix_original, matrix_target):
         # Determine which dimension is larger
-        if matrix.size(0) > matrix.size(1):
-            # Subsample only along the larger dimension
-            indices = torch.arange(0, matrix.size(0), self.reduction_factor)
-            subsampled_matrix = matrix[indices, :]
-            return subsampled_matrix 
+        #if matrix.size(0) < matrix.size(1):
+        # Subsample only along the larger dimension
+        indices_0 = torch.arange(0, matrix_original.size(0), self.reduction_factor)
+        indices_1 = torch.arange(0, matrix_original.size(1), self.reduction_factor)
+        out_dim_0 = int(indices_0.shape[0])
+        out_dim_1 = int(indices_1.shape[0])
+        target_d0, target_d1 = int(matrix_target.shape[0]), int(matrix_target.shape[1]) 
+        if out_dim_0 == target_d0: 
+            pass
         else:
-            indices = torch.arange(0, matrix.size(1), self.reduction_factor)
-            subsampled_matrix = matrix[:, indices]
-            return subsampled_matrix 
+            indices_0 = indices_0[:target_d0]
+        if out_dim_1 == target_d1:
+            pass
+        else:
+            indices_1 = indices_1[:target_d1]        
+        subsampled_matrix = matrix_original[indices_0, :][: ,indices_1]
+        return subsampled_matrix 
+        
+    def _subsample_embeddings_dim0(self, matrix_original, matrix_target):
+        indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
+        out_dim_0 = int(indices.shape[0]) 
+        target_d0 = int(matrix_target.shape[0]) 
+        if out_dim_0 == target_d0: 
+            pass
+        else:
+            indices = indices[:target_d0]
+        subsampled_matrix = matrix_original[indices, :]
+        return subsampled_matrix 
+
+    def _subsample_embeddings_dim1(self, matrix_original, matrix_target):
+        indices = torch.arange(0, matrix_original.size(1), self.reduction_factor)
+        out_dim_1 = int(indices.shape[0]) 
+        target_d1 = int(matrix_target.shape[1]) 
+        if out_dim_1 == target_d1: 
+            pass
+        else:
+            indices = indices[:target_d1]
+        subsampled_matrix = matrix_original[:, indices]
+        return subsampled_matrix 
+
+
+
+    # def _subsample_embeddings_(self, matrix):
+        # # Determine which dimension is larger
+        # if matrix.size(0) > matrix.size(1):
+        #     # Subsample only along the larger dimension
+        #     indices = torch.arange(0, matrix.size(0), self.reduction_factor)
+        #     subsampled_matrix = matrix[indices, :]
+        #     return subsampled_matrix 
+        # else:
+        #     indices = torch.arange(0, matrix.size(1), self.reduction_factor)
+        #     subsampled_matrix = matrix[:, indices]
+        #     return subsampled_matrix 
+
 
     def forward(self, x):
         x = x.to(self.model.device)
@@ -361,14 +448,6 @@ class Distiller:
         print("Trainable params:", trainable_params)
         print("===========================")
 
-        
-        '''
-        for name, param in model.named_parameters():
-            print(f"{name}: {param.size()}")
-        print("===========================")
-        '''
-
-
         '''
         return CausalLMOutputWithCrossAttentions(
             loss=loss,
@@ -439,8 +518,15 @@ class Distiller:
             if i == stop_batch:
                 break
             self.step = i + 1
+
+            #print(0000000)
+            #print(batch.shape)
             output_large = self.larger_model.forward(batch)
+            #print(11111111)
+            #print(batch.shape)
             output_small = self.smaller_model.forward(batch)
+            #print(2222222)
+            #exit()
             loss = self.loss_layer(output_large, output_small) 
             #model_z = self.inference_step(batch)
             #distill_model_loss = self.train_step(batch, model_z)
