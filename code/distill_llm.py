@@ -100,60 +100,6 @@ class LargerModel:
         z = self.model(x, output_hidden_states=True)
         return z
     
-'''
-class SmallerModel:
-    def __init__(self, parser):
-        self.llm = parser.llm
-        self.max_tokens = parser.max_tokens
-        self.grad = 64
-        self.step = 0
-        self.learning_rate = parser.learning_rate
-        self.weight_decay = parser.weight_decay
-        self.batch_size = parser.batch_size
-        self.cache_dir = parser.cache_dir
-        self.cpus = parser.cpus
-        self.device = parser.device
-        self.target_dir = parser.target_dir
-        self.revision = parser.revision
-        self.distill_model_config = parser.distill_model_config
-        config = AutoConfig.from_pretrained(self.distill_model_config, trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_config(
-            config,
-            trust_remote_code=True
-        ) 
-
-        print("==========")
-        for name, p in self.model.named_parameters():
-            if "transformer.h.0" in name:
-                print(f"Name: {name}")
-                print(p)
-                print(p.shape)
-                print("------")
-                #exit()
-                
-            
-            if "transformer.h.31.mlp.c_proj.weight" == name:
-                print("!!!!!!!!!")
-                print(p)
-                print(p.shape)
-                #print(p[,0])
-                #print(p[,0].shape)
-                print("!!!!!!!!!")
-            #print(f"Name: {name}")
-            #print(p)
-            #print(p.shape)
-            #print("------")
-            #exit()
-        print("==========")
-        exit()
-        
-    def forward(self, x):
-        x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=True)
-        return z
-'''
-
-
 
 class SmallerModel:
     def __init__(self, parser):
@@ -178,54 +124,82 @@ class SmallerModel:
         #     cache_dir = self.cache_dir,
         #     trust_remote_code=True
         # )
+       
         
-        self.model_config = AutoConfig.from_pretrained(self.llm, trust_remote_code=True)
-        self.model_config.rotary_dim = int(self.model_config.rotary_dim / self.reduction_factor)
-        self.model_config.n_embd = int(self.model_config.n_embd / self.reduction_factor)
-        self.model_config.n_inner = int(self.model_config.n_inner / self.reduction_factor)
-        self.model_config.hidden_size = int(self.model_config.hidden_size / self.reduction_factor)
+        # self.model_config = AutoConfig.from_pretrained(self.llm, trust_remote_code=True)
+        # self.model_config.rotary_dim = int(self.model_config.rotary_dim / self.reduction_factor)
+        # self.model_config.n_embd = int(self.model_config.n_embd / self.reduction_factor)
+        # self.model_config.n_inner = int(self.model_config.n_inner / self.reduction_factor)
+        # self.model_config.hidden_size = int(self.model_config.hidden_size / self.reduction_factor)
         #model_config.num_attention_heads = int(model_config.num_attention_heads / self.reduction_factor)
         #model_config.intermediate_size = int(model_config.intermediate_size / self.reduction_factor)
-        # 使用更新后的配置创建新模型
-        self.model = AutoModelForCausalLM.from_config(
-            self.model_config,
-            trust_remote_code=True
-        ).to(self.device)
-        # 根据需要进一步修改和加载模型参数
 
-        '''
-        for n, p in self.model.named_parameters():
-            print(n, p.shape)
-        exit()
-        '''
-        self.reduce()
-
-    
-    def reduce(self):
-
-        # Create a copy of the state_dict for modifications
-        state_dict = self.model.state_dict()
-
-        model_original = AutoModelForCausalLM.from_pretrained(
+        # # 使用更新后的配置创建新模型
+        # self.model = AutoModelForCausalLM.from_config(
+        #     self.model_config,
+        #     trust_remote_code=True
+        # ).to(self.device)
+        self.model = AutoModelForCausalLM.from_pretrained(
             self.llm,
             revision = self.revision,
             cache_dir = self.cache_dir,
             trust_remote_code=True
-        )
+        ) 
+
+        # print("=====================")
+        # for n, p in self.model.named_parameters():
+        #     print(n, p.shape)     
+        # exit()  
+
+        
+        # 根据需要进一步修改和加载模型参数
+        self.reduce()
+
+    
+    def reduce(self):
+        # # Create a copy of the state_dict for modifications
+        state_dict = self.model.state_dict()
+
+        #print(state_dict)
+        #print(state_dict.keys())
+        #exit()
+
+        # model_original = AutoModelForCausalLM.from_pretrained(
+        #     self.llm,
+        #     revision = self.revision,
+        #     cache_dir = self.cache_dir,
+        #     trust_remote_code=True
+        # )
+        
+        # Create a copy of the state_dict for modifications
+        # state_dict = model_original.state_dict()
+        
+        # # Iterate over the state_dict and modify parameters
+        # for name, param in model_original.named_parameters():
+        #     #print(name)
+        #     if 'position_embeddings' in name:
+        #         # Subsample positional embeddings uniformly
+        #         state_dict[name] = self._subsample_embeddings(param)
+        #     elif param.dim() == 2:
+        #         if param.size(0) == param.size(1):
+        #             # Subsample and scale square matrices
+        #             state_dict[name] = self._subsample_and_scale(param)
+        #         else:
+        #             # Handle rectangular matrices by subsampling only the larger dimension
+        #             state_dict[name] = self._subsample_rectangular_matrices(param)
+        #     else:
+        #         # Keep other parameters unchanged
+        #         print("!!!", name, param.shape)
+        #         state_dict[name] = param
+
         
         # Iterate over the state_dict and modify parameters
-        for name, param in model_original.named_parameters():
-            print(name)
-            if 'position_embeddings' in name:
-                # Subsample positional embeddings uniformly
-                state_dict[name] = self._subsample_embeddings(param)
+        # for name, param in model_original.named_parameters():
+        for name, param in self.model.named_parameters():
+            #print(name, param.shape)
 
-            '''
-            elif param.dim() == 2 and param.size(0) == param.size(1):
-                # Subsample and scale square matrices
-                new_state_dict[name] = self._subsample_and_scale(param)
-            '''
-            elif param.dim() == 2:
+            if param.dim() == 2:
+                # 2D weight matrices
                 if param.size(0) == param.size(1):
                     # Subsample and scale square matrices
                     state_dict[name] = self._subsample_and_scale(param)
@@ -233,15 +207,18 @@ class SmallerModel:
                     # Handle rectangular matrices by subsampling only the larger dimension
                     state_dict[name] = self._subsample_rectangular_matrices(param)
             else:
-                # Keep other parameters unchanged
-                state_dict[name] = param
+                # embedding, bias, .... (1D)
+                state_dict[name] = self._subsample_embeddings(param)
 
+        
         # Load the modified state_dict back to the model
         self.model.load_state_dict(state_dict, strict=False)
 
-
+        
         for n, p in self.model.named_parameters():
             print(n, p.shape)
+        
+        print("pass")
         exit()
 
         
@@ -271,6 +248,8 @@ class SmallerModel:
             indices = torch.arange(0, matrix.size(1), self.reduction_factor)
             subsampled_matrix = matrix[:, indices]
             return subsampled_matrix 
+
+    
 
     def forward(self, x):
         x = x.to(self.model.device)
