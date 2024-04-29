@@ -134,7 +134,6 @@ class SmallerModel:
         #model_config.num_attention_heads = int(model_config.num_attention_heads / self.reduction_factor)
         #model_config.intermediate_size = int(model_config.intermediate_size / self.reduction_factor)
 
-        # # 使用更新后的配置创建新模型
         # self.model = AutoModelForCausalLM.from_config(
         #     self.model_config,
         #     trust_remote_code=True
@@ -146,82 +145,33 @@ class SmallerModel:
             trust_remote_code=True
         ) 
 
-        # print("=====================")
-        # for n, p in self.model.named_parameters():
-        #     print(n, p.shape)     
-        # exit()  
-
-        
-        # 根据需要进一步修改和加载模型参数
+        # downsampling the weights 
         self.reduce()
 
     
     def reduce(self):
         # # Create a copy of the state_dict for modifications
         state_dict = self.model.state_dict()
-
-        #print(state_dict)
-        #print(state_dict.keys())
-        #exit()
-
-        # model_original = AutoModelForCausalLM.from_pretrained(
-        #     self.llm,
-        #     revision = self.revision,
-        #     cache_dir = self.cache_dir,
-        #     trust_remote_code=True
-        # )
-        
-        # Create a copy of the state_dict for modifications
-        # state_dict = model_original.state_dict()
-        
-        # # Iterate over the state_dict and modify parameters
-        # for name, param in model_original.named_parameters():
-        #     #print(name)
-        #     if 'position_embeddings' in name:
-        #         # Subsample positional embeddings uniformly
-        #         state_dict[name] = self._subsample_embeddings(param)
-        #     elif param.dim() == 2:
-        #         if param.size(0) == param.size(1):
-        #             # Subsample and scale square matrices
-        #             state_dict[name] = self._subsample_and_scale(param)
-        #         else:
-        #             # Handle rectangular matrices by subsampling only the larger dimension
-        #             state_dict[name] = self._subsample_rectangular_matrices(param)
-        #     else:
-        #         # Keep other parameters unchanged
-        #         print("!!!", name, param.shape)
-        #         state_dict[name] = param
-
         
         # Iterate over the state_dict and modify parameters
         # for name, param in model_original.named_parameters():
         for name, param in self.model.named_parameters():
-            #print(name, param.shape)
-
             if param.dim() == 2:
                 # 2D weight matrices
                 if param.size(0) == param.size(1):
                     # Subsample and scale square matrices
-                    state_dict[name] = self._subsample_and_scale(param)
+                    # state_dict[name] = self._subsample_and_scale(param)
+                    param.data = self._subsample_and_scale(param) 
                 else:
                     # Handle rectangular matrices by subsampling only the larger dimension
-                    state_dict[name] = self._subsample_rectangular_matrices(param)
+                    # state_dict[name] = self._subsample_rectangular_matrices(param)
+                    param.data = self._subsample_rectangular_matrices(param)
             else:
                 # embedding, bias, .... (1D)
-                state_dict[name] = self._subsample_embeddings(param)
-
-        
+                # state_dict[name] = self._subsample_embeddings(param)
+                param.data = self._subsample_embeddings(param)
         # Load the modified state_dict back to the model
-        self.model.load_state_dict(state_dict, strict=False)
-
-        
-        for n, p in self.model.named_parameters():
-            print(n, p.shape)
-        
-        print("pass")
-        exit()
-
-        
+        # self.model.load_state_dict(state_dict, strict=False)   
         
     def _subsample_embeddings(self, embeddings):
         #print(embeddings.shape)
@@ -248,8 +198,6 @@ class SmallerModel:
             indices = torch.arange(0, matrix.size(1), self.reduction_factor)
             subsampled_matrix = matrix[:, indices]
             return subsampled_matrix 
-
-    
 
     def forward(self, x):
         x = x.to(self.model.device)
@@ -305,7 +253,6 @@ class Distiller:
 
         self.show_params(self.larger_model.model)
         self.show_params(self.smaller_model.model)
-
         
         #self.distill_model = distill_model = self.distill_model.train()
         #self.model = self.model.eval()
