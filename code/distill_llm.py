@@ -396,11 +396,15 @@ class Distiller:
         '''
         
         
-        accelerator = Accelerator(
+        self.accelerator = Accelerator(
             gradient_accumulation_steps=self.grad,
+            #mixed_precision = 'bf16',
+            #fsdp_plugin = True,
+            #megatron_lm_plugin = True,
+            #deepspeed_plugin = True,
         )
         
-        self.larger_model, self.smaller_model, self.opt, self.loader= accelerator.prepare(
+        self.larger_model, self.smaller_model, self.opt, self.loader= self.accelerator.prepare(
             self.larger_model, self.smaller_model, self.opt, self.loader
         )
 
@@ -460,6 +464,16 @@ class Distiller:
         '''
 
     def loss_layer(self, output_large, output_small):
+        #print(111111111111)
+        #print(output_large)
+        #exit()
+        large_logits = output_large.logits #torch.Size([4, 2048, 32032])
+        small_logits = output_small.logits #torch.Size([4, 2048, 32032])
+
+        loss = torch.nn.MSELoss()(large_logits, small_logits)
+
+        
+        '''
         large_hidden_states = output_large.hidden_states
         large_hidden_states = torch.stack(large_hidden_states)
         small_hidden_states = output_small.hidden_states  
@@ -477,6 +491,10 @@ class Distiller:
         exit()
         # calculate the loss between large_hidden_states and small_hidden_states
         loss = torch.nn.CrossEntropyLoss()(large_hidden_states, small_hidden_states.argmax(dim=-1))
+        '''
+
+        return loss
+
 
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
@@ -508,6 +526,16 @@ class Distiller:
         max_i = 0
         stop_batch = self.train_max_batch
         accumulated_loss = 0.0
+        
+        
+         
+        self.larger_model.model.to(self.device)
+        self.smaller_model.model.to(self.device)
+        
+        # Need to revise 
+        #half: fp16
+        self.larger_model.model.half() 
+        self.smaller_model.model.half() 
          
         self.larger_model.model.train()
         self.smaller_model.model.train()
@@ -522,12 +550,10 @@ class Distiller:
             #print(0000000)
             #print(batch.shape)
             output_large = self.larger_model.forward(batch)
-            #print(11111111)
-            #print(batch.shape)
             output_small = self.smaller_model.forward(batch)
-            #print(2222222)
-            #exit()
+            print("!!!!!!!!")
             loss = self.loss_layer(output_large, output_small) 
+            print("!!!!pass!!!!")
             #model_z = self.inference_step(batch)
             #distill_model_loss = self.train_step(batch, model_z)
             #total_loss += distill_model_loss.item()
