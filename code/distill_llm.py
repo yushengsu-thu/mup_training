@@ -24,12 +24,22 @@ from accelerate import Accelerator
 import os
 import argparse
 
+from torch.distributions import Normal, kl_divergence
+
+#from accelerate.plugins import FSDPPlugin
+
+
+#from pytorch_lightning.plugins import FullyShardedDataParallelPlugin
+#from pytorch_lightning.plugins import FullyShardedDataParallelPlugin
+#from pytorch_lightning.strategies import FullyShardedDataParallelPlugin
+
 
 # split data, 1:9
 # add ppl
 
 PROJECT="mup"
 ENTITY="mbzuai-llm"
+
 
 
 class DatasetWrapper(IterableDataset):
@@ -316,11 +326,6 @@ class Distiller:
 
         self.larger_model = larger_model
         self.smaller_model = smaller_model
-        #tensor([  50,   27,  187,  ..., 5471, 1422, 1912])
-        #torch.Size([1024])
-
-        #tensor([[1394,  403,  271,  ...,    0,    0,    0]])
-        #torch.Size([1, 1024])
         self.tokenizer = self.dataset.tokenizer
         self.loader = DataLoader(
             self.dataset,
@@ -336,13 +341,9 @@ class Distiller:
         #config.save_pretrained('../distill-crystalcoder-config')
 
 
-        #self.scaler = torch.cuda.amp.GradScaler()
-
         self.show_params(self.larger_model.model)
         self.show_params(self.smaller_model.model)
         
-        #self.distill_model = distill_model = self.distill_model.train()
-        #self.model = self.model.eval()
 
         '''
         self.opt = bnb.optim.Lion(
@@ -378,28 +379,13 @@ class Distiller:
         '''
         ###
         
-
-        ## I want to uniformly sampling d/2 coordinates from each layers of self.larger_model and use them to initlize the self.smaller_model
-        # I want to uniformly sampling d/2 coordinates from each layers of self.larger_model and use them to initlize the self.smaller_model
-        '''
-        d_l = self.smaller_model.model.config.hidden_size
-        d = self.smaller_model.model.config.hidden_size
-        print(d_l, d) 
-        for layer_large, layer_small in zip(self.larger_model.model.h, self.smaller_model.model.h):
-            layer_large_size = layer_large.mlp.c_proj.out_channels
-            layer_small_size = layer_small.mlp.c_proj.out_channels
-            indices = torch.randperm(layer_large_size)[:d//2]
-            layer_small.mlp.c_proj.weight.data[:, indices] = layer_large.mlp.c_proj.weight.data[:, indices]
-            print(layer_large_size, layer_small_size)
-        print(111111)
-        exit()
-        '''
-        
-        
+        #fsdp_plugin = FSDPPlugin(mixed_precision="bf16", reshard_after_forward=True)
+         
         self.accelerator = Accelerator(
             gradient_accumulation_steps=self.grad,
-            #mixed_precision = 'bf16',
-            #fsdp_plugin = True,
+            #mixed_precision = 'fp8',
+            mixed_precision = 'bf16',
+            #fsdp_plugin = fsdp_plugin,
             #megatron_lm_plugin = True,
             #deepspeed_plugin = True,
         )
@@ -463,36 +449,52 @@ class Distiller:
         )
         '''
 
+    def compute_mean_loss(self, large_hidden_states, small_hidden_states):
+        # print(large_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
+        # print(small_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
+        mean_large = large_hidden_states.mean(dim=(1, 2, 3)) 
+        mean_small = small_hidden_states.mean(dim=(1, 2, 3))
+        mean_loss = torch.abs(mean_large - mean_small)
+        return mean_loss
+
+    def compute_kl_divergence_distance(self, large_hidden_states, small_hidden_states):
+        mean_large = large_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
+        std_large = large_hidden_states.std(dim=(1, 2, 3), keepdim=True)
+        mean_small = small_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
+        std_small = small_hidden_states.std(dim=(1, 2, 3), keepdim=True)
+        # build distribute
+        dist_large = Normal(mean_large, std_large)
+        dist_small = Normal(mean_small, std_small)
+        # caculate KL by layer
+        #kl_div = kl_divergence(dist_large, dist_small).mean(dim=1)  
+        kl_div = kl_divergence(dist_large, dist_small).mean(dim=(1, 2, 3))
+        return kl_div
+
     def loss_layer(self, output_large, output_small):
-        #print(111111111111)
-        #print(output_large)
-        #exit()
+        '''
         large_logits = output_large.logits #torch.Size([4, 2048, 32032])
         small_logits = output_small.logits #torch.Size([4, 2048, 32032])
-
         loss = torch.nn.MSELoss()(large_logits, small_logits)
-
-        
         '''
+        
         large_hidden_states = output_large.hidden_states
         large_hidden_states = torch.stack(large_hidden_states)
         small_hidden_states = output_small.hidden_states  
         small_hidden_states = torch.stack(small_hidden_states)
-        print("======")
-        print(large_hidden_states.shape) #torch.Size([33, 4, 2048, 4096])
-        print(small_hidden_states.shape) #torch.Size([33, 4, 2048, 1024])
         # print("======")
-        # large_hidden_states = large_hidden_states.view(-1, large_hidden_states.size(-1))
-        # small_hidden_states = small_hidden_states.view(-1, small_hidden_states.size(-1))
-        # print(large_hidden_states.shape)
-        # print(small_hidden_states.shape)
-        print("======")
-        print("======")
-        exit()
-        # calculate the loss between large_hidden_states and small_hidden_states
-        loss = torch.nn.CrossEntropyLoss()(large_hidden_states, small_hidden_states.argmax(dim=-1))
-        '''
+        # print(large_hidden_states.shape) #torch.Size([33, 4, 2048, 4096])
+        # print(small_hidden_states.shape) #torch.Size([33, 4, 2048, 1024])
+        # print(large_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
+        # print(small_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
+        # print("======")
 
+
+        # compute_mean_loss of large_hidden_states and small_hidden_states for each layer 
+        # calculate the overall loss as the sum of mean_loss and wasserstein_distance
+        mean_loss = self.compute_mean_loss(large_hidden_states, small_hidden_states)
+        # compute_kl_distance of large_hidden_states and small_hidden_states for each layer 
+        kl_loss = self.compute_kl_divergence_distance(large_hidden_states, small_hidden_states)
+        loss = mean_loss + kl_loss
         return loss
 
 
@@ -527,8 +529,6 @@ class Distiller:
         stop_batch = self.train_max_batch
         accumulated_loss = 0.0
         
-        
-         
         self.larger_model.model.to(self.device)
         self.smaller_model.model.to(self.device)
         
@@ -543,27 +543,19 @@ class Distiller:
         print()
         print("lr:{}".format(self.learning_rate))
         for i, batch in enumerate(prog):
+            self.opt.zero_grad()
+
             if i == stop_batch:
                 break
             self.step = i + 1
 
-            #print(0000000)
-            #print(batch.shape)
+
             output_large = self.larger_model.forward(batch)
             output_small = self.smaller_model.forward(batch)
-            print("!!!!!!!!")
             loss = self.loss_layer(output_large, output_small) 
-            print("!!!!pass!!!!")
-            #model_z = self.inference_step(batch)
-            #distill_model_loss = self.train_step(batch, model_z)
-            #total_loss += distill_model_loss.item()
             accumulated_loss += loss.item()
             total_loss += loss.item()
-            #total_loss += loss.item()
-            #print_loss = total_loss/self.step
-            #prog.set_description(f"loss: {print_loss:.3f}")
             prog.set_description(f"loss: {loss.item():.3f}")
-            #max_i = i
             '''
             wandb.log(
                 {
@@ -572,27 +564,26 @@ class Distiller:
                 step=i,
             )
             '''
-            # # 检查参数是否变化
-            # for initial_param, trained_param in zip(initial_teacher_params, teacher_model.parameters()):
-            #     if not torch.equal(initial_param, trained_param):
-            #         print("Parameter changed!")
-            #     else:
-            #         print("Parameter unchanged.")
 
-            self.opt.zero_grad()
             self.accelerator.backward(loss)
             
+            ''' 
+            #################### 
+            # check whether optimize the parmaeters?
+            for initial_param, trained_param in zip(self.larger_model.model.parameters(), self.smaller_model.model.parameters()):
+                if not torch.equal(initial_param, trained_param):
+                    print("Parameter changed!")
+                else:
+                    print("Parameter unchanged.")
+            #################### 
+            ''' 
             
             if (i + 1) % self.grad == 0:
                 self.opt.step()
                 prog.set_description(f"accumulated_loss: {total_loss:.3f}")
                 accumulated_loss = 0.0
                 
-                # self.scaler.step(self.opt)
-                # self.scaler.update()
-                # self.opt.zero_grad()
         total_loss = total_loss/self.step
-        #prog.set_description(f"total_loss: {total_loss:.3f}")
         print()
         print(f"total_loss: {total_loss:.3f}")
         print("========================================")
