@@ -454,29 +454,39 @@ class Distiller:
         # print(small_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
         mean_large = large_hidden_states.mean(dim=(1, 2, 3)) 
         mean_small = small_hidden_states.mean(dim=(1, 2, 3))
-        mean_loss = torch.abs(mean_large - mean_small)
+        mean_loss = torch.abs(mean_large - mean_small).sum()
         return mean_loss
 
     def compute_kl_divergence_distance(self, large_hidden_states, small_hidden_states):
+        # Small constant to prevent division by zero in std computation
+        epsilon = 1e-5
         mean_large = large_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
-        std_large = large_hidden_states.std(dim=(1, 2, 3), keepdim=True)
+        std_large = large_hidden_states.std(dim=(1, 2, 3), keepdim=True) + epsilon
         mean_small = small_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
-        std_small = small_hidden_states.std(dim=(1, 2, 3), keepdim=True)
+        std_small = small_hidden_states.std(dim=(1, 2, 3), keepdim=True) + epsilon
+         # Check for NaNs in computed means and stds
+        if torch.isnan(mean_large).any() or torch.isnan(mean_small).any() or torch.isnan(std_large).any() or torch.isnan(std_small).any():
+            print()
+            print("KL_loss: NaN detected in statistical computations")
+            # Return zero (or epsilon) loss or handle appropriately
+            return torch.tensor(0.0, device=mean_large.device)  # Return zero loss or handle appropriately
         # build distribute
         dist_large = Normal(mean_large, std_large)
         dist_small = Normal(mean_small, std_small)
         # caculate KL by layer
         #kl_div = kl_divergence(dist_large, dist_small).mean(dim=1)  
-        kl_div = kl_divergence(dist_large, dist_small).mean(dim=(1, 2, 3))
+        kl_div = kl_divergence(dist_large, dist_small).mean(dim=(1, 2, 3)).sum()
         return kl_div
 
     def loss_layer(self, output_large, output_small):
+
         '''
+        # Logit loss
         large_logits = output_large.logits #torch.Size([4, 2048, 32032])
         small_logits = output_small.logits #torch.Size([4, 2048, 32032])
         loss = torch.nn.MSELoss()(large_logits, small_logits)
         '''
-        
+
         large_hidden_states = output_large.hidden_states
         large_hidden_states = torch.stack(large_hidden_states)
         small_hidden_states = output_small.hidden_states  
@@ -494,7 +504,10 @@ class Distiller:
         mean_loss = self.compute_mean_loss(large_hidden_states, small_hidden_states)
         # compute_kl_distance of large_hidden_states and small_hidden_states for each layer 
         kl_loss = self.compute_kl_divergence_distance(large_hidden_states, small_hidden_states)
+        print("ml:", mean_loss.shape)
+        print("kl:", kl_loss.shape)
         loss = mean_loss + kl_loss
+        
         return loss
 
 
@@ -543,6 +556,7 @@ class Distiller:
         print()
         print("lr:{}".format(self.learning_rate))
         for i, batch in enumerate(prog):
+            
             self.opt.zero_grad()
 
             if i == stop_batch:
@@ -578,6 +592,11 @@ class Distiller:
             #################### 
             ''' 
             
+            self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+             
+            self.opt.step()
+            continue
+
             if (i + 1) % self.grad == 0:
                 self.opt.step()
                 prog.set_description(f"accumulated_loss: {total_loss:.3f}")
@@ -607,16 +626,13 @@ def main():
     parser.add_argument('--reduction_factor', type=int, default=4, help='reduction_factor')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     
 
     args = parser.parse_args()
     #args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
 
     smaller_model = SmallerModel(args)
-
     larger_model = LargerModel(args)
-
     distiller = Distiller(args, larger_model, smaller_model)
     distiller.distill()
 
