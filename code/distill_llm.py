@@ -26,14 +26,6 @@ import argparse
 
 from torch.distributions import Normal, kl_divergence
 
-#from accelerate.plugins import FSDPPlugin
-
-
-#from pytorch_lightning.plugins import FullyShardedDataParallelPlugin
-#from pytorch_lightning.plugins import FullyShardedDataParallelPlugin
-#from pytorch_lightning.strategies import FullyShardedDataParallelPlugin
-
-
 # split data, 1:9
 # add ppl
 
@@ -127,7 +119,6 @@ class SmallerModel:
         self.revision = parser.revision
         self.distill_model_config = parser.distill_model_config
         self.reduction_factor = parser.reduction_factor
-        # 加载原始模型的配置并修改为新的维度
         # self.model = AutoModelForCausalLM.from_pretrained(
         #     self.llm,
         #     revision = self.revision,
@@ -140,33 +131,15 @@ class SmallerModel:
         # self.model_config.rotary_dim = int(self.model_config.rotary_dim / self.reduction_factor)
         self.model_config.n_embd = int(self.model_config.n_embd / self.reduction_factor)
         self.model_config.n_inner = int(self.model_config.n_inner / self.reduction_factor)
-        # self.model_config.hidden_size = int(self.model_config.hidden_size / self.reduction_factor)
-        #model_config.num_attention_heads = int(model_config.num_attention_heads / self.reduction_factor)
-        #model_config.intermediate_size = int(model_config.intermediate_size / self.reduction_factor)
 
         self.model = AutoModelForCausalLM.from_config(
             self.model_config,
             trust_remote_code=True
         )
 
-        # for name, param in self.model.named_parameters():
-        #    print(name, param.shape)
-
-        # exit()
-
-
-        # self.model = AutoModelForCausalLM.from_pretrained(
-        #     self.llm,
-        #     revision = self.revision,
-        #     cache_dir = self.cache_dir,
-        #     trust_remote_code=True
-        # )
-
         # downsampling the weights
-        self.reduce()
+        self.reduce() # ask --> cannot pre-define the framework config
 
-        #for name, param in self.model.named_parameters():
-        #    print(name, param.shape)
 
     def reduce(self):
         # # Create a copy of the state_dict for modifications
@@ -182,7 +155,6 @@ class SmallerModel:
 
         # Iterate over the state_dict and modify parameters
         # for name, param in model_original.named_parameters():
-        #count=0
         for (name_original, param_original), (name, param) in zip(model_original.named_parameters(), self.model.named_parameters()):
             #print(name_original)
             if param.dim() == 2:
@@ -204,10 +176,6 @@ class SmallerModel:
                 #param.data = self._subsample_embeddings(param_original, param)
                 state_dict[name] = self._subsample_embeddings(param_original, param)
 
-        #del model_original
-        # Load the modified state_dict back to the model
-        self.model.load_state_dict(state_dict, strict=True)
-
 
     # 1 D
     def _subsample_embeddings(self, matrix_original, matrix_target):
@@ -222,6 +190,7 @@ class SmallerModel:
         subsampled_matrix = matrix_original[indices]
         return subsampled_matrix
 
+        
     def _subsample_and_scale(self, matrix_original, matrix_target):
         #print(matrix.shape)
         indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
@@ -238,7 +207,6 @@ class SmallerModel:
             indices = indices[:target_d1]
         subsampled_matrix = matrix_original[indices, :][:, indices] * self.reduction_factor
         return subsampled_matrix
-
     def _subsample_embeddings_dim(self, matrix_original, matrix_target):
         # Determine which dimension is larger
         #if matrix.size(0) < matrix.size(1):
@@ -258,7 +226,6 @@ class SmallerModel:
             indices_1 = indices_1[:target_d1]
         subsampled_matrix = matrix_original[indices_0, :][: ,indices_1]
         return subsampled_matrix
-
     def _subsample_embeddings_dim0(self, matrix_original, matrix_target):
         indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
         out_dim_0 = int(indices.shape[0])
@@ -269,7 +236,6 @@ class SmallerModel:
             indices = indices[:target_d0]
         subsampled_matrix = matrix_original[indices, :]
         return subsampled_matrix
-
     def _subsample_embeddings_dim1(self, matrix_original, matrix_target):
         indices = torch.arange(0, matrix_original.size(1), self.reduction_factor)
         out_dim_1 = int(indices.shape[0])
@@ -280,21 +246,6 @@ class SmallerModel:
             indices = indices[:target_d1]
         subsampled_matrix = matrix_original[:, indices]
         return subsampled_matrix
-
-
-
-    # def _subsample_embeddings_(self, matrix):
-        # # Determine which dimension is larger
-        # if matrix.size(0) > matrix.size(1):
-        #     # Subsample only along the larger dimension
-        #     indices = torch.arange(0, matrix.size(0), self.reduction_factor)
-        #     subsampled_matrix = matrix[indices, :]
-        #     return subsampled_matrix
-        # else:
-        #     indices = torch.arange(0, matrix.size(1), self.reduction_factor)
-        #     subsampled_matrix = matrix[:, indices]
-        #     return subsampled_matrix
-
 
     def forward(self, x):
         x = x.to(self.model.device)
@@ -381,6 +332,7 @@ class Distiller:
 
         #fsdp_plugin = FSDPPlugin(mixed_precision="bf16", reshard_after_forward=True)
 
+        # I can change to fsdp
         self.accelerator = Accelerator(
             gradient_accumulation_steps=self.grad,
             #mixed_precision = 'fp8',
@@ -511,6 +463,17 @@ class Distiller:
         return loss
 
 
+    def loss_hidden(self, output_large, output_small):
+        print(11111)
+        #print(output_large.hidden_states, output_small.hidden_states)
+        print(type(output_large.hidden_states))
+        print(output_large.hidden_states[0])
+        print(output_large.hidden_states[0].shape)
+        exit()
+
+
+        
+        
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
@@ -566,10 +529,13 @@ class Distiller:
 
             output_large = self.larger_model.forward(batch)
             output_small = self.smaller_model.forward(batch)
-            loss = self.loss_layer(output_large, output_small)
-            accumulated_loss += loss.item()
-            total_loss += loss.item()
-            prog.set_description(f"loss: {loss.item():.3f}")
+            # step1: downsample X:
+            loss_1 = self.loss_hidden(output_large, output_small)
+            # step2:
+            loss_2 = self.loss_layer(output_large, output_small)
+            accumulated_loss += loss_2.item()
+            total_loss += loss_2.item()
+            prog.set_description(f"loss: {loss_2.item():.3f}")
             '''
             wandb.log(
                 {
@@ -626,7 +592,6 @@ def main():
     parser.add_argument('--reduction_factor', type=int, default=4, help='reduction_factor')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
     args = parser.parse_args()
     #args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
