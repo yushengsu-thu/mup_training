@@ -468,7 +468,10 @@ class Distiller:
         #print(output_large.hidden_states, output_small.hidden_states)
         print(type(output_large.hidden_states))
         print(output_large.hidden_states[0])
+        print("==========================")
         print(output_large.hidden_states[0].shape)
+        print("--------------------------")
+        print(output_small.hidden_states[0].shape)
         exit()
 
 
