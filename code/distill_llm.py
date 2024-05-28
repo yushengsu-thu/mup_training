@@ -156,7 +156,10 @@ class SmallerModel:
         # Iterate over the state_dict and modify parameters
         # for name, param in model_original.named_parameters():
         for (name_original, param_original), (name, param) in zip(model_original.named_parameters(), self.model.named_parameters()):
-            #print(name_original)
+
+            print(name_original)
+            print("-----------")
+
             if param.dim() == 2:
                 # 2D weight matrices
                 if param.size(0) == param.size(1):
@@ -464,17 +467,65 @@ class Distiller:
 
 
     def loss_hidden(self, output_large, output_small):
-        print(11111)
-        #print(output_large.hidden_states, output_small.hidden_states)
-        print(type(output_large.hidden_states))
-        print(output_large.hidden_states[0])
-        print("==========================")
-        print(output_large.hidden_states[0].shape)
-        print("--------------------------")
-        print(output_small.hidden_states[0].shape)
-        exit()
+        ############
+        large_hidden_states = output_large.hidden_states
+        large_hidden_states = torch.stack(large_hidden_states)
+        small_hidden_states = output_small.hidden_states
+        small_hidden_states = torch.stack(small_hidden_states)
+        
+        # Subsample the hidden states
+        subsampled_large_hidden_states = self._subsample_embeddings_dim1(large_hidden_states, small_hidden_states)
+        subsampled_small_hidden_states = self._subsample_embeddings_dim1(small_hidden_states, small_hidden_states)
+        
+        #print("===========")
+        #print(self.smaller_model.model.weights)
+        #print("===========")
+        #exit()
+         
+        # Compute y' = W''x'
+        y_prime = torch.matmul(subsampled_small_hidden_states, self.smaller_model.model.wte.weight)
+        
+        # Compute dx' = W''^T dy'
+        dy_prime = torch.matmul(subsampled_small_hidden_states, self.smaller_model.model.wte.weight.t())
+        
+        # Compute the loss ||y' - W''x'||
+        y_loss = torch.nn.MSELoss()(y_prime, subsampled_large_hidden_states)
+        
+        # Compute the loss ||dx' - W''^T dy'||
+        dx_loss = torch.nn.MSELoss()(dy_prime, subsampled_large_hidden_states)
+        
+        # Compute the total loss
+        loss = y_loss + dx_loss
+        
+        return loss
+        ############
 
+        
+        
+    #     print(11111)
+    #     #print(,idden_states, output_small.)        pprint(type(output_large._large_hidden))
+    #     print(output_.[0])
+    #     print("=========================="
+    #     print(output_large.[0].shape)
+    #     print(output_large.pe)_[1].shape)
+    #     print("--------------------------")
+    #     print(output_small.[0].shape
+    #     print(output].shap.)[1].shape)
+    #     print("--------------------------")
+    #     print(len(large.hidden_states))
+    #     exit()
 
+    def _subsample_embeddings_dim1(self, matrix_original, matrix_target):
+        #indices = torch.arange(0, matrix_original.size(1), self.reduction_factor)
+        indices = torch.arange(0, matrix_original.size(1), 4)
+        out_dim_1 = int(indices.shape[0])
+        target_d1 = int(matrix_target.shape[1])
+        if out_dim_1 == target_d1:
+            pass
+        else:
+            indices = indices[:target_d1]
+        subsampled_matrix = matrix_original[:, indices]
+        return subsampled_matrix
         
         
     def distill(self):
