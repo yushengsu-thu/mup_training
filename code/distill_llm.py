@@ -96,6 +96,10 @@ class LargerModel:
             cache_dir = self.cache_dir,
             trust_remote_code=True
         )
+        
+                
+
+
 
     def forward(self, x):
         x = x.to(self.model.device)
@@ -553,18 +557,28 @@ class Distiller:
     
     def place_hook(self, model):
 
-        print(111111111)
-        print(111111111)
-        print(model)
-        print(111111111)
-        print(111111111)
 
-        #for name, module in model.named_parameters():
+
+        print(11111)
         for name, module in model.named_modules():
+            print(name)
             if hasattr(module, 'weight'):
-                return module.register_forward_hook(self.hook_function)
+                module.register_forward_hook(self.hook_function)
             else:
                 print("fail:", name)
+        print(11111)
+
+        import pdb; pdb.set_trace()
+        exit()
+        
+        
+        
+        #for name, module in model.named_parameters():
+        # for name, module in model.named_modules():
+        #     if hasattr(module, 'weight'):
+        #         return module.register_forward_hook(self.hook_function)
+        #     else:
+        #         print("fail:", name)
     
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
@@ -614,8 +628,10 @@ class Distiller:
         loss_1 = None
         loss_2 = None
 
+        
+        
 
-        self.place_hook(self.smaller_model)
+        self.place_hook(self.smaller_model.model)
         
         for i, batch in enumerate(prog):
 
