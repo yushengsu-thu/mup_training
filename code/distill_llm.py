@@ -155,10 +155,23 @@ class SmallerModel:
 
         # Iterate over the state_dict and modify parameters
         # for name, param in model_original.named_parameters():
-        for (name_original, param_original), (name, param) in zip(model_original.named_parameters(), self.model.named_parameters()):
 
-            print(name_original)
-            print("-----------")
+        # Print out the weight matrix in each layer
+        #for i in range(10):
+        #    name = f"layer{i}"
+        #    param = self.model.named_parameters()[i][1]
+        #    print(f"Layer: {name}")
+        #    print(param)  
+            
+        # for name, param in self.model.named_parameters():
+        #     if param.dim() == 2:
+        #     print(f"Layer: {name}")
+        #     print(param)
+        
+        
+            
+        # If there are 10 param, could I use index to assign orinnt out the specific param instead of use for loop?
+        for (name_original, param_original), (name, param) in zip(model_original.named_parameters(), self.model.named_parameters()):
 
             if param.dim() == 2:
                 # 2D weight matrices
@@ -193,7 +206,7 @@ class SmallerModel:
         subsampled_matrix = matrix_original[indices]
         return subsampled_matrix
 
-        
+
     def _subsample_and_scale(self, matrix_original, matrix_target):
         #print(matrix.shape)
         indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
@@ -289,6 +302,8 @@ class Distiller:
         self.eval_max_batch = math.ceil(self.loader.dataset.__eval_size__()/self.batch_size)
         self.train_max_batch = math.ceil(self.loader.dataset.__train_size__()/self.batch_size)
 
+        #Save hook inf.
+        self.hook_dict = {}
 
 
         #config = AutoConfig.from_pretrained('LLM360/CrystalCoder', trust_remote_code=True)
@@ -466,42 +481,48 @@ class Distiller:
         return loss
 
 
+
+    
+
     def loss_hidden(self, output_large, output_small):
+
         ############
         large_hidden_states = output_large.hidden_states
         large_hidden_states = torch.stack(large_hidden_states)
         small_hidden_states = output_small.hidden_states
         small_hidden_states = torch.stack(small_hidden_states)
-        
+
+        '''
         # Subsample the hidden states
         subsampled_large_hidden_states = self._subsample_embeddings_dim1(large_hidden_states, small_hidden_states)
         subsampled_small_hidden_states = self._subsample_embeddings_dim1(small_hidden_states, small_hidden_states)
-        
+
         #print("===========")
         #print(self.smaller_model.model.weights)
         #print("===========")
         #exit()
-         
+
         # Compute y' = W''x'
         y_prime = torch.matmul(subsampled_small_hidden_states, self.smaller_model.model.wte.weight)
-        
+
         # Compute dx' = W''^T dy'
         dy_prime = torch.matmul(subsampled_small_hidden_states, self.smaller_model.model.wte.weight.t())
-        
+
         # Compute the loss ||y' - W''x'||
         y_loss = torch.nn.MSELoss()(y_prime, subsampled_large_hidden_states)
-        
+
         # Compute the loss ||dx' - W''^T dy'||
         dx_loss = torch.nn.MSELoss()(dy_prime, subsampled_large_hidden_states)
-        
+
         # Compute the total loss
         loss = y_loss + dx_loss
-        
+
         return loss
         ############
+        '''
 
-        
-        
+
+
     #     print(11111)
     #     #print(,idden_states, output_small.)        pprint(type(output_large._large_hidden))
     #     print(output_.[0])
@@ -526,8 +547,25 @@ class Distiller:
             indices = indices[:target_d1]
         subsampled_matrix = matrix_original[:, indices]
         return subsampled_matrix
-        
-        
+
+    def hook_function(self, module, in_, out_):
+        self.hook_dict[module] = out_
+    
+    def place_hook(self, model):
+
+        print(111111111)
+        print(111111111)
+        print(model)
+        print(111111111)
+        print(111111111)
+
+        #for name, module in model.named_parameters():
+        for name, module in model.named_modules():
+            if hasattr(module, 'weight'):
+                return module.register_forward_hook(self.hook_function)
+            else:
+                print("fail:", name)
+    
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
@@ -562,6 +600,7 @@ class Distiller:
         self.larger_model.model.to(self.device)
         self.smaller_model.model.to(self.device)
 
+
         # Need to revise
         #half: fp16
         self.larger_model.model.half()
@@ -572,6 +611,12 @@ class Distiller:
 
         print()
         print("lr:{}".format(self.learning_rate))
+        loss_1 = None
+        loss_2 = None
+
+
+        self.place_hook(self.smaller_model)
+        
         for i, batch in enumerate(prog):
 
             self.opt.zero_grad()
@@ -580,13 +625,20 @@ class Distiller:
                 break
             self.step = i + 1
 
-
             output_large = self.larger_model.forward(batch)
             output_small = self.smaller_model.forward(batch)
+
+            if self.step >= 2:
+                print("========")
+                print(self.hook_dict)
+                print("========")
+                exit()
             # step1: downsample X:
-            loss_1 = self.loss_hidden(output_large, output_small)
+            #loss_1 = self.loss_hidden(output_large, output_small)
             # step2:
             loss_2 = self.loss_layer(output_large, output_small)
+            #loss = loss_1 + loss_2
+            loss = loss_2
             accumulated_loss += loss_2.item()
             total_loss += loss_2.item()
             prog.set_description(f"loss: {loss_2.item():.3f}")
