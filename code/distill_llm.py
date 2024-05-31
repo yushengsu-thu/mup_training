@@ -107,6 +107,7 @@ class LargerModel:
         return z
 
 
+# make the smaller model 
 class SmallerModel:
     def __init__(self, parser):
         self.llm = parser.llm
@@ -307,8 +308,11 @@ class Distiller:
         self.train_max_batch = math.ceil(self.loader.dataset.__train_size__()/self.batch_size)
 
         #Save hook inf.
-        self.hook_dict = {}
+        self.smaller_hook_forward_dict = {}
+        self.smaller_hook_backward_dict = {}
 
+        self.larger_hook_forward_dict = {}
+        self.larger_hook_backward_dict = {}
 
         #config = AutoConfig.from_pretrained('LLM360/CrystalCoder', trust_remote_code=True)
         #config.save_pretrained('../distill-crystalcoder-config')
@@ -486,59 +490,17 @@ class Distiller:
 
 
 
-    
+    def forward_hook(self, module, input, output):
+        # print(f"Forward hook: {module}")
+        # print(f"Input: {input}")
+        # print(f"Output: {output}")
+        pass
 
-    def loss_hidden(self, output_large, output_small):
-
-        ############
-        large_hidden_states = output_large.hidden_states
-        large_hidden_states = torch.stack(large_hidden_states)
-        small_hidden_states = output_small.hidden_states
-        small_hidden_states = torch.stack(small_hidden_states)
-
-        '''
-        # Subsample the hidden states
-        subsampled_large_hidden_states = self._subsample_embeddings_dim1(large_hidden_states, small_hidden_states)
-        subsampled_small_hidden_states = self._subsample_embeddings_dim1(small_hidden_states, small_hidden_states)
-
-        #print("===========")
-        #print(self.smaller_model.model.weights)
-        #print("===========")
-        #exit()
-
-        # Compute y' = W''x'
-        y_prime = torch.matmul(subsampled_small_hidden_states, self.smaller_model.model.wte.weight)
-
-        # Compute dx' = W''^T dy'
-        dy_prime = torch.matmul(subsampled_small_hidden_states, self.smaller_model.model.wte.weight.t())
-
-        # Compute the loss ||y' - W''x'||
-        y_loss = torch.nn.MSELoss()(y_prime, subsampled_large_hidden_states)
-
-        # Compute the loss ||dx' - W''^T dy'||
-        dx_loss = torch.nn.MSELoss()(dy_prime, subsampled_large_hidden_states)
-
-        # Compute the total loss
-        loss = y_loss + dx_loss
-
-        return loss
-        ############
-        '''
-
-
-
-    #     print(11111)
-    #     #print(,idden_states, output_small.)        pprint(type(output_large._large_hidden))
-    #     print(output_.[0])
-    #     print("=========================="
-    #     print(output_large.[0].shape)
-    #     print(output_large.pe)_[1].shape)
-    #     print("--------------------------")
-    #     print(output_small.[0].shape
-    #     print(output].shap.)[1].shape)
-    #     print("--------------------------")
-    #     print(len(large.hidden_states))
-    #     exit()
+    def backward_hook(self, module, grad_input, grad_output):
+        # print(f"Backward hook: {module}")
+        # print(f"Grad Input: {grad_input}")
+        # print(f"Grad Output: {grad_output}")
+        pass 
 
     def _subsample_embeddings_dim1(self, matrix_original, matrix_target):
         #indices = torch.arange(0, matrix_original.size(1), self.reduction_factor)
@@ -552,24 +514,44 @@ class Distiller:
         subsampled_matrix = matrix_original[:, indices]
         return subsampled_matrix
 
-    def hook_function(self, module, in_, out_):
-        self.hook_dict[module] = out_
-    
-    def place_hook(self, model):
 
-
-
-        print(11111)
+    def smaller_register_hook(self, model):
         for name, module in model.named_modules():
-            print(name)
+            # weight, basi, embedding wte, needs?
             if hasattr(module, 'weight'):
-                module.register_forward_hook(self.hook_function)
-            else:
-                print("fail:", name)
-        print(11111)
+                self.smaller_hook_forward_dict[name] = module.register_forward_hook(self.forward_hook)
+                self.smaller_hook_backward_dict[name] = module.register_backward_hook(self.backward_hook)
 
-        import pdb; pdb.set_trace()
-        exit()
+    def larger_register_hook(self, model):
+        for name, module in model.named_modules():
+            # weight, basi, embedding wte, needs?
+            if hasattr(module, 'weight'):
+                self.larger_hook_forward_dict[name] = module.register_forward_hook(self.forward_hook)
+                self.larger_hook_backward_dict[name] = module.register_backward_hook(self.backward_hook)
+
+    def loss_hidden(self, output_large, output_small):
+        ############
+        large_hidden_states = output_large.hidden_states
+        large_hidden_states = torch.stack(large_hidden_states)
+        small_hidden_states = output_small.hidden_states
+        small_hidden_states = torch.stack(small_hidden_states)
+
+
+        # print(11111)
+        # for name, module in model.named_modules():
+        #     print("========")
+        #     print(name, module)
+        #     if hasattr(module, 'weight'):
+        #         module.register_forward_hook(self.hook_function)
+        #     else:
+        #         print("fail:")
+        #         print(name)
+        #         print("----")
+        #         print(module)
+        # print(11111)
+
+        # import pdb; pdb.set_trace()
+        # exit()
         
         
         
@@ -617,21 +599,21 @@ class Distiller:
 
         # Need to revise
         #half: fp16
+        ######
         self.larger_model.model.half()
         self.smaller_model.model.half()
 
         self.larger_model.model.train()
         self.smaller_model.model.train()
+        ######
 
         print()
         print("lr:{}".format(self.learning_rate))
         loss_1 = None
         loss_2 = None
 
-        
-        
-
-        self.place_hook(self.smaller_model.model)
+        self.smaller_register_hook(self.smaller_model.model)
+        self.larger_register_hook(self.larger_model.model)
         
         for i, batch in enumerate(prog):
 
@@ -644,20 +626,32 @@ class Distiller:
             output_large = self.larger_model.forward(batch)
             output_small = self.smaller_model.forward(batch)
 
-            if self.step >= 2:
-                print("========")
-                print(self.hook_dict)
-                print("========")
-                exit()
+            import pdb; pdb.set_trace()
+            
+             
+            print("---------")
+            print(self.smaller_hook_forward_dict)
+            print("==========")
+
+            exit()
+             
+            # Clean hook:
+            self.hook_forward_dict.clear()
+            self.hook_backward_dict.clear()
+            
+            # Register hook:
+            self.register_hook(self.smaller_model.model)
+
             # step1: downsample X:
-            #loss_1 = self.loss_hidden(output_large, output_small)
+            loss_1 = self.loss_hidden(output_large, output_small)
             # step2:
-            loss_2 = self.loss_layer(output_large, output_small)
+            #loss_2 = self.loss_layer(output_large, output_small)
             #loss = loss_1 + loss_2
-            loss = loss_2
-            accumulated_loss += loss_2.item()
-            total_loss += loss_2.item()
-            prog.set_description(f"loss: {loss_2.item():.3f}")
+            #loss = loss_2
+            loss = loss_1
+            #accumulated_loss += loss_2.item()
+            #total_loss += loss_2.item()
+            #prog.set_description(f"loss: {loss_2.item():.3f}")
             '''
             wandb.log(
                 {
