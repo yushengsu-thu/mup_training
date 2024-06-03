@@ -489,19 +489,6 @@ class Distiller:
         return loss
 
 
-
-    def forward_hook(self, module, input, output):
-        # print(f"Forward hook: {module}")
-        # print(f"Input: {input}")
-        # print(f"Output: {output}")
-        pass
-
-    def backward_hook(self, module, grad_input, grad_output):
-        # print(f"Backward hook: {module}")
-        # print(f"Grad Input: {grad_input}")
-        # print(f"Grad Output: {grad_output}")
-        pass 
-
     def _subsample_embeddings_dim1(self, matrix_original, matrix_target):
         #indices = torch.arange(0, matrix_original.size(1), self.reduction_factor)
         indices = torch.arange(0, matrix_original.size(1), 4)
@@ -514,20 +501,44 @@ class Distiller:
         subsampled_matrix = matrix_original[:, indices]
         return subsampled_matrix
 
+    def forward_hook(self, module_name, model_name):
+        if model_name == "smaller":
+            def f_hook(module, input, output):
+                self.smaller_hook_forward_dict[module_name] = output
+            return f_hook
+        elif model_name == "larger":
+            def f_hook(module, input, output):
+                self.larger_hook_forward_dict[module_name] = output
+            return f_hook
+        else:
+            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 510+-")
 
-    def smaller_register_hook(self, model):
-        for name, module in model.named_modules():
+
+    def backward_hook(self, module_name, model_name):
+        if model_name == "smaller":
+            def b_hook(module, grad_input, grad_output):
+                self.smaller_hook_backward_dict[module_name] = grad_output
+            return b_hook
+        elif model_name == "larger":
+            def b_hook(module, grad_input, grad_output):
+                self.larger_hook_backward_dict[module_name] = grad_output
+            return b_hook
+        else:
+            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 523+-")
+
+    def smaller_register_hook(self, model, model_name="smaller"):
+        for module_name, module in model.named_modules():
             # weight, basi, embedding wte, needs?
             if hasattr(module, 'weight'):
-                self.smaller_hook_forward_dict[name] = module.register_forward_hook(self.forward_hook)
-                self.smaller_hook_backward_dict[name] = module.register_backward_hook(self.backward_hook)
+                module.register_forward_hook(self.forward_hook(module_name, model_name))
+                module.register_backward_hook(self.backward_hook(module_name, model_name))
 
-    def larger_register_hook(self, model):
-        for name, module in model.named_modules():
+    def larger_register_hook(self, model, model_name="larger"):
+        for module_name, module in model.named_modules():
             # weight, basi, embedding wte, needs?
             if hasattr(module, 'weight'):
-                self.larger_hook_forward_dict[name] = module.register_forward_hook(self.forward_hook)
-                self.larger_hook_backward_dict[name] = module.register_backward_hook(self.backward_hook)
+                module.register_forward_hook(self.forward_hook(module_name, model_name))
+                module.register_backward_hook(self.backward_hook(module_name, model_name))
 
     def loss_hidden(self, output_large, output_small):
         ############
@@ -626,12 +637,14 @@ class Distiller:
             output_large = self.larger_model.forward(batch)
             output_small = self.smaller_model.forward(batch)
 
+            print(self.smaller_hook_forward_dict)
+
             import pdb; pdb.set_trace()
             
              
             print("---------")
-            print(self.smaller_hook_forward_dict)
-            print("==========")
+            #print(self.smaller_hook_forward_dict)
+            #print("==========")
 
             exit()
              
