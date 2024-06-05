@@ -96,15 +96,92 @@ class LargerModel:
             cache_dir = self.cache_dir,
             trust_remote_code=True
         )
-        
-                
-
-
-
     def forward(self, x):
         x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=True)
         return z
+
+
+
+# 1 D
+def _subsample_embeddings(matrix_original, matrix_target, reduction_factor):
+    #print(embeddings.shape)
+    indices = torch.arange(0, matrix_original.size(0), reduction_factor)
+    out_dim = int(indices.shape[0])
+    target_d0 = int(matrix_target.shape[0])
+    if out_dim == target_d0:
+        pass
+    else:
+        indices = indices[:target_d0]
+    subsampled_matrix = matrix_original[indices]
+    return subsampled_matrix.data
+def _subsample_and_scale(matrix_original, matrix_target, reduction_factor):
+    #print(matrix.shape)
+    indices = torch.arange(0, matrix_original.size(0), reduction_factor)
+    #subsampled_matrix = matrix_original[indices][:, indices] * self.reduction_factor
+    out_dim = int(indices.shape[0])
+    target_d0, target_d1 = int(matrix_target.shape[0]), int(matrix_target.shape[1])
+    if out_dim == target_d0:
+        pass
+    else:
+        indices = indices[:target_d0]
+    if out_dim == target_d1:
+        pass
+    else:
+        indices = indices[:target_d1]
+    subsampled_matrix = matrix_original[indices, :][:, indices] * reduction_factor
+    return subsampled_matrix.data
+def _subsample_embeddings_dim(matrix_original, matrix_target, reduction_factor):
+    # Determine which dimension is larger
+    #if matrix.size(0) < matrix.size(1):
+    # Subsample only along the larger dimension
+    indices_0 = torch.arange(0, matrix_original.size(0), reduction_factor)
+    indices_1 = torch.arange(0, matrix_original.size(1), reduction_factor)
+    out_dim_0 = int(indices_0.shape[0])
+    out_dim_1 = int(indices_1.shape[0])
+    target_d0, target_d1 = int(matrix_target.shape[0]), int(matrix_target.shape[1])
+    if out_dim_0 == target_d0:
+        pass
+    else:
+        indices_0 = indices_0[:target_d0]
+    if out_dim_1 == target_d1:
+        pass
+    else:
+        indices_1 = indices_1[:target_d1]
+    subsampled_matrix = matrix_original[indices_0, :][: ,indices_1]
+    return subsampled_matrix.data
+def _subsample_embeddings_dim0(matrix_original, matrix_target, reduction_factor):
+    indices = torch.arange(0, matrix_original.size(0), reduction_factor)
+    out_dim_0 = int(indices.shape[0])
+    target_d0 = int(matrix_target.shape[0])
+    if out_dim_0 == target_d0:
+        pass
+    else:
+        indices = indices[:target_d0]
+    subsampled_matrix = matrix_original[indices, :]
+    return subsampled_matrix.data
+def _subsample_embeddings_dim1(matrix_original, matrix_target, reduction_factor):
+    indices = torch.arange(0, matrix_original.size(1), reduction_factor)
+    out_dim_1 = int(indices.shape[0])
+    target_d1 = int(matrix_target.shape[1])
+    if out_dim_1 == target_d1:
+        pass
+    else:
+        indices = indices[:target_d1]
+    subsampled_matrix = matrix_original[:, indices]
+    return subsampled_matrix.data
+def _subsample_embeddings_dimlast(matrix_original, matrix_target, reduction_factor):
+    device = matrix_original.get_device() 
+    indices = torch.arange(0, matrix_original.size(-1), reduction_factor).to(device)
+    out_dim_1 = int(indices.shape[0])
+    target_d1 = int(matrix_target.shape[-1])
+    if out_dim_1 == target_d1:
+       pass
+    else:
+        indices = indices[:target_d1]
+    #subsampled_matrix = matrix_original[:, :, indices]
+    subsampled_matrix = matrix_original.index_select(dim=-1, index=indices)
+    return subsampled_matrix.data
 
 
 # make the smaller model 
@@ -142,9 +219,22 @@ class SmallerModel:
             trust_remote_code=True
         )
 
+        model_copy = copy.deepcopy(self.model)
+
+
+        
         # downsampling the weights
         self.reduce() # ask --> cannot pre-define the framework config
 
+        # print("======")
+        # print(model_copy.transformer.wte.weight.data[0][:10])
+        # print(self.model.transformer.wte.weight.data[0][:10])
+        # print("======")
+
+        # for (name_original, param_original), (name, param) in zip(model_copy.named_parameters(), self.model.named_parameters()): 
+        #     print(name_original, torch.equal(param_original, param)) 
+        # exit()
+        
 
     def reduce(self):
         # # Create a copy of the state_dict for modifications
@@ -155,118 +245,33 @@ class SmallerModel:
             cache_dir = self.cache_dir,
             trust_remote_code=True
         )
-
-        state_dict = self.model.state_dict()
-
-        # Iterate over the state_dict and modify parameters
-        # for name, param in model_original.named_parameters():
-
-        # Print out the weight matrix in each layer
-        #for i in range(10):
-        #    name = f"layer{i}"
-        #    param = self.model.named_parameters()[i][1]
-        #    print(f"Layer: {name}")
-        #    print(param)  
-            
-        # for name, param in self.model.named_parameters():
-        #     if param.dim() == 2:
-        #     print(f"Layer: {name}")
-        #     print(param)
-        
-        
-            
         # If there are 10 param, could I use index to assign orinnt out the specific param instead of use for loop?
+        state_dict = self.model.state_dict()
         for (name_original, param_original), (name, param) in zip(model_original.named_parameters(), self.model.named_parameters()):
-
             if param.dim() == 2:
                 # 2D weight matrices
                 if param.size(0) == param.size(1):
                     # Subsample and scale square matrices
                     #param.data = self._subsample_and_scale(param_original, param)
-                    state_dict[name] = self._subsample_and_scale(param_original, param)
+                    #state_dict[name] = _subsample_and_scale(param_original, param, self.reduction_factor)
+                    param.data = _subsample_and_scale(param_original, param, self.reduction_factor)
                 else:
                     # Handle rectangular matrices by subsampling only the larger dimension
                     if "wte" in name:
                         #param.data = self._subsample_embeddings_dim1(param_original, param)
-                        state_dict[name] = self._subsample_embeddings_dim1(param_original, param)
+                        #self.model.state_dict[name] = _subsample_embeddings_dim1(param_original, param, self.reduction_factor)
+                        param.data = _subsample_embeddings_dim1(param_original, param, self.reduction_factor)
                     else:
                         #param.data = self._subsample_embeddings_dim(param_original, param)
-                        state_dict[name] = self._subsample_embeddings_dim(param_original, param)
+                        #self.model.state_dict[name] = _subsample_embeddings_dim(param_original, param, self.reduction_factor)
+                        param.data = _subsample_embeddings_dim(param_original, param, self.reduction_factor)
             else:
                 # embedding, bias, .... (1D)
                 #param.data = self._subsample_embeddings(param_original, param)
-                state_dict[name] = self._subsample_embeddings(param_original, param)
-
-
-    # 1 D
-    def _subsample_embeddings(self, matrix_original, matrix_target):
-        #print(embeddings.shape)
-        indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
-        out_dim = int(indices.shape[0])
-        target_d0 = int(matrix_target.shape[0])
-        if out_dim == target_d0:
-            pass
-        else:
-            indices = indices[:target_d0]
-        subsampled_matrix = matrix_original[indices]
-        return subsampled_matrix
-
-
-    def _subsample_and_scale(self, matrix_original, matrix_target):
-        #print(matrix.shape)
-        indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
-        #subsampled_matrix = matrix_original[indices][:, indices] * self.reduction_factor
-        out_dim = int(indices.shape[0])
-        target_d0, target_d1 = int(matrix_target.shape[0]), int(matrix_target.shape[1])
-        if out_dim == target_d0:
-            pass
-        else:
-            indices = indices[:target_d0]
-        if out_dim == target_d1:
-            pass
-        else:
-            indices = indices[:target_d1]
-        subsampled_matrix = matrix_original[indices, :][:, indices] * self.reduction_factor
-        return subsampled_matrix
-    def _subsample_embeddings_dim(self, matrix_original, matrix_target):
-        # Determine which dimension is larger
-        #if matrix.size(0) < matrix.size(1):
-        # Subsample only along the larger dimension
-        indices_0 = torch.arange(0, matrix_original.size(0), self.reduction_factor)
-        indices_1 = torch.arange(0, matrix_original.size(1), self.reduction_factor)
-        out_dim_0 = int(indices_0.shape[0])
-        out_dim_1 = int(indices_1.shape[0])
-        target_d0, target_d1 = int(matrix_target.shape[0]), int(matrix_target.shape[1])
-        if out_dim_0 == target_d0:
-            pass
-        else:
-            indices_0 = indices_0[:target_d0]
-        if out_dim_1 == target_d1:
-            pass
-        else:
-            indices_1 = indices_1[:target_d1]
-        subsampled_matrix = matrix_original[indices_0, :][: ,indices_1]
-        return subsampled_matrix
-    def _subsample_embeddings_dim0(self, matrix_original, matrix_target):
-        indices = torch.arange(0, matrix_original.size(0), self.reduction_factor)
-        out_dim_0 = int(indices.shape[0])
-        target_d0 = int(matrix_target.shape[0])
-        if out_dim_0 == target_d0:
-            pass
-        else:
-            indices = indices[:target_d0]
-        subsampled_matrix = matrix_original[indices, :]
-        return subsampled_matrix
-    def _subsample_embeddings_dim1(self, matrix_original, matrix_target):
-        indices = torch.arange(0, matrix_original.size(1), self.reduction_factor)
-        out_dim_1 = int(indices.shape[0])
-        target_d1 = int(matrix_target.shape[1])
-        if out_dim_1 == target_d1:
-            pass
-        else:
-            indices = indices[:target_d1]
-        subsampled_matrix = matrix_original[:, indices]
-        return subsampled_matrix
+                #state_dict[name] = _subsample_embeddings(param_original, param, self.reduction_factor)
+                param.data = _subsample_embeddings(param_original, param, self.reduction_factor)
+        
+        del model_original
 
     def forward(self, x):
         x = x.to(self.model.device)
@@ -380,23 +385,23 @@ class Distiller:
             (wte): Embedding(32032, 4096)
             (drop): Dropout(p=0.0, inplace=False)
             (h): ModuleList(
-            (0-31): 32 x CrystalCoderBlock(
-                (ln_1): LayerNorm((4096,), eps=1e-05, elementwise_affine=True)
-                (attn): CrystalCoderAttention(
-                (c_attn): Conv1D()
-                (c_proj): Conv1D()
-                (attn_dropout): Dropout(p=0.0, inplace=False)
-                (resid_dropout): Dropout(p=0.0, inplace=False)
+                (0-31): 32 x CrystalCoderBlock(
+                    (ln_1): LayerNorm((4096,), eps=1e-05, elementwise_affine=True)
+                    (attn): CrystalCoderAttention(
+                        (c_attn): Conv1D()
+                        (c_proj): Conv1D()
+                        (attn_dropout): Dropout(p=0.0, inplace=False)
+                        (resid_dropout): Dropout(p=0.0, inplace=False)
+                    )
+                    (ln_2): LayerNorm((4096,), eps=1e-05, elementwise_affine=True)
+                    (mlp): CrystalCoderMLP(
+                        (c_fc): Conv1D()
+                        (c_fc2): Conv1D()
+                        (c_proj): Conv1D()
+                        (act): SwiGLUActivation()
+                        (dropout): Dropout(p=0.0, inplace=False)
+                    )
                 )
-                (ln_2): LayerNorm((4096,), eps=1e-05, elementwise_affine=True)
-                (mlp): CrystalCoderMLP(
-                (c_fc): Conv1D()
-                (c_fc2): Conv1D()
-                (c_proj): Conv1D()
-                (act): SwiGLUActivation()
-                (dropout): Dropout(p=0.0, inplace=False)
-                )
-            )
             )
             (ln_f): LayerNorm((4096,), eps=1e-05, elementwise_affine=True)
         )
@@ -489,18 +494,6 @@ class Distiller:
         return loss
 
 
-    def _subsample_embeddings_dim1(self, matrix_original, matrix_target):
-        #indices = torch.arange(0, matrix_original.size(1), self.reduction_factor)
-        indices = torch.arange(0, matrix_original.size(1), 4)
-        out_dim_1 = int(indices.shape[0])
-        target_d1 = int(matrix_target.shape[1])
-        if out_dim_1 == target_d1:
-            pass
-        else:
-            indices = indices[:target_d1]
-        subsampled_matrix = matrix_original[:, indices]
-        return subsampled_matrix
-
     def forward_hook(self, module_name, model_name):
         if model_name == "smaller":
             def f_hook(module, input, output):
@@ -511,7 +504,7 @@ class Distiller:
                 self.larger_hook_forward_dict[module_name] = output
             return f_hook
         else:
-            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 510+-")
+            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 491+-")
 
 
     def backward_hook(self, module_name, model_name):
@@ -524,21 +517,23 @@ class Distiller:
                 self.larger_hook_backward_dict[module_name] = grad_output
             return b_hook
         else:
-            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 523+-")
+            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
 
     def smaller_register_hook(self, model, model_name="smaller"):
+        #for module_name, module in model.named_parameters():
         for module_name, module in model.named_modules():
             # weight, basi, embedding wte, needs?
-            if hasattr(module, 'weight'):
-                module.register_forward_hook(self.forward_hook(module_name, model_name))
-                module.register_backward_hook(self.backward_hook(module_name, model_name))
+            #if hasattr(module, 'weight'):
+            module.register_forward_hook(self.forward_hook(module_name, model_name))
+            module.register_backward_hook(self.backward_hook(module_name, model_name))
 
     def larger_register_hook(self, model, model_name="larger"):
+        #for module_name, module in model.named_parameters():
         for module_name, module in model.named_modules():
             # weight, basi, embedding wte, needs?
-            if hasattr(module, 'weight'):
-                module.register_forward_hook(self.forward_hook(module_name, model_name))
-                module.register_backward_hook(self.backward_hook(module_name, model_name))
+            #if hasattr(module, 'weight'):
+            module.register_forward_hook(self.forward_hook(module_name, model_name))
+            module.register_backward_hook(self.backward_hook(module_name, model_name))
 
     def loss_hidden(self, output_large, output_small):
         ############
@@ -606,7 +601,10 @@ class Distiller:
 
         self.larger_model.model.to(self.device)
         self.smaller_model.model.to(self.device)
-
+        #self.smaller_model_copy = copy.deepcopy(self.smaller_model)
+        #print(33333)
+        #print(self.smaller_model_copy)
+        #exit()
 
         # Need to revise
         #half: fp16
@@ -615,6 +613,7 @@ class Distiller:
         self.smaller_model.model.half()
 
         self.larger_model.model.train()
+        self.smaller_model.model.train()
         self.smaller_model.model.train()
         ######
 
@@ -626,6 +625,16 @@ class Distiller:
         self.smaller_register_hook(self.smaller_model.model)
         self.larger_register_hook(self.larger_model.model)
         
+
+       
+        # input a vector to replace the hidden state after the word emgedding layers in the self.smaller_model.model and use the replaced hidden state to train the self.smaller_model.model
+        # hidden_state = torch.randn(batch_size, seq_length, hidden_dim)  # Replace with your desired hidden state
+        # output_small.hidden_states[0] = hidden_state
+        # output_small = self.smaller_model.forward(output_small)
+
+        #loss_1 --> forward pass: weight matrix
+        #loss_2 --> backward pass: weight matrix
+        #loss_3 --> hidden state difference
         for i, batch in enumerate(prog):
 
             self.opt.zero_grad()
@@ -637,13 +646,84 @@ class Distiller:
             output_large = self.larger_model.forward(batch)
             output_small = self.smaller_model.forward(batch)
 
-            print(self.smaller_hook_forward_dict)
+            # (self.larger_model.model.wte.weight.shape)
+            
+            #print(self.smaller_hook_forward_dict)
+            # check transformer.h.19.attn 2
 
+            # for i, j in self.smaller_hook_forward_dict.items():
+            #     #if hasattr(j, 'weight'): 
+            #     print(i, len(j))
+
+            # !!!!!! because dict is on cpu, so I need to move it to gpu !!!!!!!!!!!!!! Need to change to tensor
+            # Create downsample x: Downsample larger_model hidden_state * W^T_(smaller_model) to get x 
+            larger_hidden = self.larger_hook_forward_dict['transformer.wte'] #torch.Size([1, 2048, 4096])
+            smaller_hidden = self.smaller_hook_forward_dict['transformer.wte'] #torch.Size([1, 2048, 1024])
+            x = _subsample_embeddings_dimlast(larger_hidden, smaller_hidden, self.smaller_model.reduction_factor)
+            
+            #Get the self.smaller_model.model.transformer.wte's weight and print it out
+            weight_tensor = self.smaller_model.model.transformer.wte.weight.data #[32032, 1024]
+            print(weight_tensor.shape) #[32032, 1024]
+
+   
+            # x' = x_plam, W = wte_tensor
+            # x_plam.shape --> torch.Size([1, 2048, 1024]) 
+            # wte_tensor.shape --> [32032, 1024]
+            # x.shape --> torch.Size([1, 2048])
+            # xW = x' --> x = x'W^T
+
+            
             import pdb; pdb.set_trace()
             
-             
+            exit()
+            
+            # for name, para in self.smaller_model.model.named_parameters():
+            #     print(name, para.shape)
+
+
+            
+
+            ######
+            #(wte): Embedding(32032, 4096)
+            # implement downsampling
+            large_hidden_states = output_large.hidden_states
+            large_hidden_states = torch.stack(large_hidden_states)
+            small_hidden_states = self._subsample_embeddings_dim1(large_hidden_states, output_small.hidden_states)
+
+            # replace hidden states in output_small with downsampled hidden states
+            output_small.hidden_states = small_hidden_states
+
+            # perform inference on smaller model
+            output_small = self.smaller_model.forward(output_small)
+
+            print(output_small)
+            ######
+            
+
+            import pdb; pdb.set_trace()
+                
+            exit()
+            
+            # cnt = 0
+            # for name, module in self.smaller_model.named_modules():
+            #     if cnt == 0:
+                    
+            #     else:
+            #         previous_module = 
+            #         later_module =
+            #         #if hasattr(module, 'weight'): 
+            # cnt = 0
+            
             print("---------")
-            #print(self.smaller_hook_forward_dict)
+            print(len(self.smaller_hook_forward_dict))
+            print("==========")
+            exit()
+             
+            # for k in self.smaller_hook_forward_dict.keys(): 
+            #     print(self.smaller_model.model[k])
+
+            # print("---------")
+            # print(self.smaller_hook_forward_dict)
             #print("==========")
 
             exit()
@@ -733,3 +813,923 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+# y-bias
+
+'''
+transformer.wte.weight torch.Size([32032, 1024])
+transformer.h.0.ln_1.weight torch.Size([1024])
+transformer.h.0.ln_1.bias torch.Size([1024])
+transformer.h.0.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.0.attn.c_attn.bias torch.Size([3072])
+transformer.h.0.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.0.attn.c_proj.bias torch.Size([1024])
+transformer.h.0.ln_2.weight torch.Size([1024])
+transformer.h.0.ln_2.bias torch.Size([1024])
+transformer.h.0.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.0.mlp.c_fc.bias torch.Size([2730])
+transformer.h.0.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.0.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.0.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.0.mlp.c_proj.bias torch.Size([1024])
+transformer.h.1.ln_1.weight torch.Size([1024])
+transformer.h.1.ln_1.bias torch.Size([1024])
+transformer.h.1.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.1.attn.c_attn.bias torch.Size([3072])
+transformer.h.1.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.1.attn.c_proj.bias torch.Size([1024])
+transformer.h.1.ln_2.weight torch.Size([1024])
+transformer.h.1.ln_2.bias torch.Size([1024])
+transformer.h.1.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.1.mlp.c_fc.bias torch.Size([2730])
+transformer.h.1.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.1.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.1.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.1.mlp.c_proj.bias torch.Size([1024])
+transformer.h.2.ln_1.weight torch.Size([1024])
+transformer.h.2.ln_1.bias torch.Size([1024])
+transformer.h.2.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.2.attn.c_attn.bias torch.Size([3072])
+transformer.h.2.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.2.attn.c_proj.bias torch.Size([1024])
+transformer.h.2.ln_2.weight torch.Size([1024])
+transformer.h.2.ln_2.bias torch.Size([1024])
+transformer.h.2.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.2.mlp.c_fc.bias torch.Size([2730])
+transformer.h.2.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.2.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.2.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.2.mlp.c_proj.bias torch.Size([1024])
+transformer.h.3.ln_1.weight torch.Size([1024])
+transformer.h.3.ln_1.bias torch.Size([1024])
+transformer.h.3.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.3.attn.c_attn.bias torch.Size([3072])
+transformer.h.3.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.3.attn.c_proj.bias torch.Size([1024])
+transformer.h.3.ln_2.weight torch.Size([1024])
+transformer.h.3.ln_2.bias torch.Size([1024])
+transformer.h.3.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.3.mlp.c_fc.bias torch.Size([2730])
+transformer.h.3.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.3.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.3.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.3.mlp.c_proj.bias torch.Size([1024])
+transformer.h.4.ln_1.weight torch.Size([1024])
+transformer.h.4.ln_1.bias torch.Size([1024])
+transformer.h.4.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.4.attn.c_attn.bias torch.Size([3072])
+transformer.h.4.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.4.attn.c_proj.bias torch.Size([1024])
+transformer.h.4.ln_2.weight torch.Size([1024])
+transformer.h.4.ln_2.bias torch.Size([1024])
+transformer.h.4.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.4.mlp.c_fc.bias torch.Size([2730])
+transformer.h.4.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.4.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.4.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.4.mlp.c_proj.bias torch.Size([1024])
+transformer.h.5.ln_1.weight torch.Size([1024])
+transformer.h.5.ln_1.bias torch.Size([1024])
+transformer.h.5.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.5.attn.c_attn.bias torch.Size([3072])
+transformer.h.5.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.5.attn.c_proj.bias torch.Size([1024])
+transformer.h.5.ln_2.weight torch.Size([1024])
+transformer.h.5.ln_2.bias torch.Size([1024])
+transformer.h.5.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.5.mlp.c_fc.bias torch.Size([2730])
+transformer.h.5.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.5.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.5.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.5.mlp.c_proj.bias torch.Size([1024])
+transformer.h.6.ln_1.weight torch.Size([1024])
+transformer.h.6.ln_1.bias torch.Size([1024])
+transformer.h.6.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.6.attn.c_attn.bias torch.Size([3072])
+transformer.h.6.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.6.attn.c_proj.bias torch.Size([1024])
+transformer.h.6.ln_2.weight torch.Size([1024])
+transformer.h.6.ln_2.bias torch.Size([1024])
+transformer.h.6.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.6.mlp.c_fc.bias torch.Size([2730])
+transformer.h.6.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.6.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.6.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.6.mlp.c_proj.bias torch.Size([1024])
+transformer.h.7.ln_1.weight torch.Size([1024])
+transformer.h.7.ln_1.bias torch.Size([1024])
+transformer.h.7.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.7.attn.c_attn.bias torch.Size([3072])
+transformer.h.7.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.7.attn.c_proj.bias torch.Size([1024])
+transformer.h.7.ln_2.weight torch.Size([1024])
+transformer.h.7.ln_2.bias torch.Size([1024])
+transformer.h.7.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.7.mlp.c_fc.bias torch.Size([2730])
+transformer.h.7.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.7.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.7.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.7.mlp.c_proj.bias torch.Size([1024])
+transformer.h.8.ln_1.weight torch.Size([1024])
+transformer.h.8.ln_1.bias torch.Size([1024])
+transformer.h.8.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.8.attn.c_attn.bias torch.Size([3072])
+transformer.h.8.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.8.attn.c_proj.bias torch.Size([1024])
+transformer.h.8.ln_2.weight torch.Size([1024])
+transformer.h.8.ln_2.bias torch.Size([1024])
+transformer.h.8.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.8.mlp.c_fc.bias torch.Size([2730])
+transformer.h.8.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.8.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.8.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.8.mlp.c_proj.bias torch.Size([1024])
+transformer.h.9.ln_1.weight torch.Size([1024])
+transformer.h.9.ln_1.bias torch.Size([1024])
+transformer.h.9.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.9.attn.c_attn.bias torch.Size([3072])
+transformer.h.9.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.9.attn.c_proj.bias torch.Size([1024])
+transformer.h.9.ln_2.weight torch.Size([1024])
+transformer.h.9.ln_2.bias torch.Size([1024])
+transformer.h.9.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.9.mlp.c_fc.bias torch.Size([2730])
+transformer.h.9.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.9.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.9.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.9.mlp.c_proj.bias torch.Size([1024])
+transformer.h.10.ln_1.weight torch.Size([1024])
+transformer.h.10.ln_1.bias torch.Size([1024])
+transformer.h.10.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.10.attn.c_attn.bias torch.Size([3072])
+transformer.h.10.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.10.attn.c_proj.bias torch.Size([1024])
+transformer.h.10.ln_2.weight torch.Size([1024])
+transformer.h.10.ln_2.bias torch.Size([1024])
+transformer.h.10.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.10.mlp.c_fc.bias torch.Size([2730])
+transformer.h.10.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.10.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.10.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.10.mlp.c_proj.bias torch.Size([1024])
+transformer.h.11.ln_1.weight torch.Size([1024])
+transformer.h.11.ln_1.bias torch.Size([1024])
+transformer.h.11.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.11.attn.c_attn.bias torch.Size([3072])
+transformer.h.11.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.11.attn.c_proj.bias torch.Size([1024])
+transformer.h.11.ln_2.weight torch.Size([1024])
+transformer.h.11.ln_2.bias torch.Size([1024])
+transformer.h.11.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.11.mlp.c_fc.bias torch.Size([2730])
+transformer.h.11.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.11.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.11.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.11.mlp.c_proj.bias torch.Size([1024])
+transformer.h.12.ln_1.weight torch.Size([1024])
+transformer.h.12.ln_1.bias torch.Size([1024])
+transformer.h.12.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.12.attn.c_attn.bias torch.Size([3072])
+transformer.h.12.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.12.attn.c_proj.bias torch.Size([1024])
+transformer.h.12.ln_2.weight torch.Size([1024])
+transformer.h.12.ln_2.bias torch.Size([1024])
+transformer.h.12.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.12.mlp.c_fc.bias torch.Size([2730])
+transformer.h.12.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.12.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.12.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.12.mlp.c_proj.bias torch.Size([1024])
+transformer.h.13.ln_1.weight torch.Size([1024])
+transformer.h.13.ln_1.bias torch.Size([1024])
+transformer.h.13.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.13.attn.c_attn.bias torch.Size([3072])
+transformer.h.13.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.13.attn.c_proj.bias torch.Size([1024])
+transformer.h.13.ln_2.weight torch.Size([1024])
+transformer.h.13.ln_2.bias torch.Size([1024])
+transformer.h.13.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.13.mlp.c_fc.bias torch.Size([2730])
+transformer.h.13.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.13.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.13.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.13.mlp.c_proj.bias torch.Size([1024])
+transformer.h.14.ln_1.weight torch.Size([1024])
+transformer.h.14.ln_1.bias torch.Size([1024])
+transformer.h.14.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.14.attn.c_attn.bias torch.Size([3072])
+transformer.h.14.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.14.attn.c_proj.bias torch.Size([1024])
+transformer.h.14.ln_2.weight torch.Size([1024])
+transformer.h.14.ln_2.bias torch.Size([1024])
+transformer.h.14.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.14.mlp.c_fc.bias torch.Size([2730])
+transformer.h.14.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.14.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.14.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.14.mlp.c_proj.bias torch.Size([1024])
+transformer.h.15.ln_1.weight torch.Size([1024])
+transformer.h.15.ln_1.bias torch.Size([1024])
+transformer.h.15.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.15.attn.c_attn.bias torch.Size([3072])
+transformer.h.15.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.15.attn.c_proj.bias torch.Size([1024])
+transformer.h.15.ln_2.weight torch.Size([1024])
+transformer.h.15.ln_2.bias torch.Size([1024])
+transformer.h.15.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.15.mlp.c_fc.bias torch.Size([2730])
+transformer.h.15.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.15.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.15.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.15.mlp.c_proj.bias torch.Size([1024])
+transformer.h.16.ln_1.weight torch.Size([1024])
+transformer.h.16.ln_1.bias torch.Size([1024])
+transformer.h.16.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.16.attn.c_attn.bias torch.Size([3072])
+transformer.h.16.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.16.attn.c_proj.bias torch.Size([1024])
+transformer.h.16.ln_2.weight torch.Size([1024])
+transformer.h.16.ln_2.bias torch.Size([1024])
+transformer.h.16.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.16.mlp.c_fc.bias torch.Size([2730])
+transformer.h.16.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.16.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.16.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.16.mlp.c_proj.bias torch.Size([1024])
+transformer.h.17.ln_1.weight torch.Size([1024])
+transformer.h.17.ln_1.bias torch.Size([1024])
+transformer.h.17.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.17.attn.c_attn.bias torch.Size([3072])
+transformer.h.17.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.17.attn.c_proj.bias torch.Size([1024])
+transformer.h.17.ln_2.weight torch.Size([1024])
+transformer.h.17.ln_2.bias torch.Size([1024])
+transformer.h.17.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.17.mlp.c_fc.bias torch.Size([2730])
+transformer.h.17.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.17.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.17.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.17.mlp.c_proj.bias torch.Size([1024])
+transformer.h.18.ln_1.weight torch.Size([1024])
+transformer.h.18.ln_1.bias torch.Size([1024])
+transformer.h.18.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.18.attn.c_attn.bias torch.Size([3072])
+transformer.h.18.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.18.attn.c_proj.bias torch.Size([1024])
+transformer.h.18.ln_2.weight torch.Size([1024])
+transformer.h.18.ln_2.bias torch.Size([1024])
+transformer.h.18.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.18.mlp.c_fc.bias torch.Size([2730])
+transformer.h.18.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.18.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.18.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.18.mlp.c_proj.bias torch.Size([1024])
+transformer.h.19.ln_1.weight torch.Size([1024])
+transformer.h.19.ln_1.bias torch.Size([1024])
+transformer.h.19.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.19.attn.c_attn.bias torch.Size([3072])
+transformer.h.19.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.19.attn.c_proj.bias torch.Size([1024])
+transformer.h.19.ln_2.weight torch.Size([1024])
+transformer.h.19.ln_2.bias torch.Size([1024])
+transformer.h.19.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.19.mlp.c_fc.bias torch.Size([2730])
+transformer.h.19.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.19.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.19.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.19.mlp.c_proj.bias torch.Size([1024])
+transformer.h.20.ln_1.weight torch.Size([1024])
+transformer.h.20.ln_1.bias torch.Size([1024])
+transformer.h.20.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.20.attn.c_attn.bias torch.Size([3072])
+transformer.h.20.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.20.attn.c_proj.bias torch.Size([1024])
+transformer.h.20.ln_2.weight torch.Size([1024])
+transformer.h.20.ln_2.bias torch.Size([1024])
+transformer.h.20.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.20.mlp.c_fc.bias torch.Size([2730])
+transformer.h.20.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.20.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.20.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.20.mlp.c_proj.bias torch.Size([1024])
+transformer.h.21.ln_1.weight torch.Size([1024])
+transformer.h.21.ln_1.bias torch.Size([1024])
+transformer.h.21.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.21.attn.c_attn.bias torch.Size([3072])
+transformer.h.21.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.21.attn.c_proj.bias torch.Size([1024])
+transformer.h.21.ln_2.weight torch.Size([1024])
+transformer.h.21.ln_2.bias torch.Size([1024])
+transformer.h.21.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.21.mlp.c_fc.bias torch.Size([2730])
+transformer.h.21.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.21.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.21.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.21.mlp.c_proj.bias torch.Size([1024])
+transformer.h.22.ln_1.weight torch.Size([1024])
+transformer.h.22.ln_1.bias torch.Size([1024])
+transformer.h.22.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.22.attn.c_attn.bias torch.Size([3072])
+transformer.h.22.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.22.attn.c_proj.bias torch.Size([1024])
+transformer.h.22.ln_2.weight torch.Size([1024])
+transformer.h.22.ln_2.bias torch.Size([1024])
+transformer.h.22.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.22.mlp.c_fc.bias torch.Size([2730])
+transformer.h.22.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.22.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.22.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.22.mlp.c_proj.bias torch.Size([1024])
+transformer.h.23.ln_1.weight torch.Size([1024])
+transformer.h.23.ln_1.bias torch.Size([1024])
+transformer.h.23.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.23.attn.c_attn.bias torch.Size([3072])
+transformer.h.23.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.23.attn.c_proj.bias torch.Size([1024])
+transformer.h.23.ln_2.weight torch.Size([1024])
+transformer.h.23.ln_2.bias torch.Size([1024])
+transformer.h.23.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.23.mlp.c_fc.bias torch.Size([2730])
+transformer.h.23.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.23.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.23.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.23.mlp.c_proj.bias torch.Size([1024])
+transformer.h.24.ln_1.weight torch.Size([1024])
+transformer.h.24.ln_1.bias torch.Size([1024])
+transformer.h.24.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.24.attn.c_attn.bias torch.Size([3072])
+transformer.h.24.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.24.attn.c_proj.bias torch.Size([1024])
+transformer.h.24.ln_2.weight torch.Size([1024])
+transformer.h.24.ln_2.bias torch.Size([1024])
+transformer.h.24.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.24.mlp.c_fc.bias torch.Size([2730])
+transformer.h.24.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.24.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.24.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.24.mlp.c_proj.bias torch.Size([1024])
+transformer.h.25.ln_1.weight torch.Size([1024])
+transformer.h.25.ln_1.bias torch.Size([1024])
+transformer.h.25.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.25.attn.c_attn.bias torch.Size([3072])
+transformer.h.25.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.25.attn.c_proj.bias torch.Size([1024])
+transformer.h.25.ln_2.weight torch.Size([1024])
+transformer.h.25.ln_2.bias torch.Size([1024])
+transformer.h.25.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.25.mlp.c_fc.bias torch.Size([2730])
+transformer.h.25.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.25.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.25.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.25.mlp.c_proj.bias torch.Size([1024])
+transformer.h.26.ln_1.weight torch.Size([1024])
+transformer.h.26.ln_1.bias torch.Size([1024])
+transformer.h.26.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.26.attn.c_attn.bias torch.Size([3072])
+transformer.h.26.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.26.attn.c_proj.bias torch.Size([1024])
+transformer.h.26.ln_2.weight torch.Size([1024])
+transformer.h.26.ln_2.bias torch.Size([1024])
+transformer.h.26.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.26.mlp.c_fc.bias torch.Size([2730])
+transformer.h.26.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.26.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.26.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.26.mlp.c_proj.bias torch.Size([1024])
+transformer.h.27.ln_1.weight torch.Size([1024])
+transformer.h.27.ln_1.bias torch.Size([1024])
+transformer.h.27.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.27.attn.c_attn.bias torch.Size([3072])
+transformer.h.27.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.27.attn.c_proj.bias torch.Size([1024])
+transformer.h.27.ln_2.weight torch.Size([1024])
+transformer.h.27.ln_2.bias torch.Size([1024])
+transformer.h.27.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.27.mlp.c_fc.bias torch.Size([2730])
+transformer.h.27.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.27.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.27.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.27.mlp.c_proj.bias torch.Size([1024])
+transformer.h.28.ln_1.weight torch.Size([1024])
+transformer.h.28.ln_1.bias torch.Size([1024])
+transformer.h.28.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.28.attn.c_attn.bias torch.Size([3072])
+transformer.h.28.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.28.attn.c_proj.bias torch.Size([1024])
+transformer.h.28.ln_2.weight torch.Size([1024])
+transformer.h.28.ln_2.bias torch.Size([1024])
+transformer.h.28.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.28.mlp.c_fc.bias torch.Size([2730])
+transformer.h.28.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.28.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.28.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.28.mlp.c_proj.bias torch.Size([1024])
+transformer.h.29.ln_1.weight torch.Size([1024])
+transformer.h.29.ln_1.bias torch.Size([1024])
+transformer.h.29.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.29.attn.c_attn.bias torch.Size([3072])
+transformer.h.29.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.29.attn.c_proj.bias torch.Size([1024])
+transformer.h.29.ln_2.weight torch.Size([1024])
+transformer.h.29.ln_2.bias torch.Size([1024])
+transformer.h.29.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.29.mlp.c_fc.bias torch.Size([2730])
+transformer.h.29.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.29.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.29.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.29.mlp.c_proj.bias torch.Size([1024])
+transformer.h.30.ln_1.weight torch.Size([1024])
+transformer.h.30.ln_1.bias torch.Size([1024])
+transformer.h.30.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.30.attn.c_attn.bias torch.Size([3072])
+transformer.h.30.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.30.attn.c_proj.bias torch.Size([1024])
+transformer.h.30.ln_2.weight torch.Size([1024])
+transformer.h.30.ln_2.bias torch.Size([1024])
+transformer.h.30.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.30.mlp.c_fc.bias torch.Size([2730])
+transformer.h.30.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.30.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.30.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.30.mlp.c_proj.bias torch.Size([1024])
+transformer.h.31.ln_1.weight torch.Size([1024])
+transformer.h.31.ln_1.bias torch.Size([1024])
+transformer.h.31.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.31.attn.c_attn.bias torch.Size([3072])
+transformer.h.31.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.31.attn.c_proj.bias torch.Size([1024])
+transformer.h.31.ln_2.weight torch.Size([1024])
+transformer.h.31.ln_2.bias torch.Size([1024])
+transformer.h.31.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.31.mlp.c_fc.bias torch.Size([2730])
+transformer.h.31.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.31.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.31.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.31.mlp.c_proj.bias torch.Size([1024])
+transformer.ln_f.weight torch.Size([1024])
+transformer.ln_f.bias torch.Size([1024])
+'''
+
+'''
+transformer.wte 1
+transformer.drop 1
+transformer.h.0.ln_1 1
+transformer.h.0.attn.c_attn 1
+transformer.h.0.attn.attn_dropout 1
+transformer.h.0.attn.c_proj 1
+transformer.h.0.attn.resid_dropout 1
+transformer.h.0.attn 2
+transformer.h.0.ln_2 1
+transformer.h.0.mlp.c_fc2 1
+transformer.h.0.mlp.c_fc 1
+transformer.h.0.mlp.act 1
+transformer.h.0.mlp.c_proj 1
+transformer.h.0.mlp.dropout 1
+transformer.h.0.mlp 1
+transformer.h.0 2
+transformer.h.1.ln_1 1
+transformer.h.1.attn.c_attn 1
+transformer.h.1.attn.attn_dropout 1
+transformer.h.1.attn.c_proj 1
+transformer.h.1.attn.resid_dropout 1
+transformer.h.1.attn 2
+transformer.h.1.ln_2 1
+transformer.h.1.mlp.c_fc2 1
+transformer.h.1.mlp.c_fc 1
+transformer.h.1.mlp.act 1
+transformer.h.1.mlp.c_proj 1
+transformer.h.1.mlp.dropout 1
+transformer.h.1.mlp 1
+transformer.h.1 2
+transformer.h.2.ln_1 1
+transformer.h.2.attn.c_attn 1
+transformer.h.2.attn.attn_dropout 1
+transformer.h.2.attn.c_proj 1
+transformer.h.2.attn.resid_dropout 1
+transformer.h.2.attn 2
+transformer.h.2.ln_2 1
+transformer.h.2.mlp.c_fc2 1
+transformer.h.2.mlp.c_fc 1
+transformer.h.2.mlp.act 1
+transformer.h.2.mlp.c_proj 1
+transformer.h.2.mlp.dropout 1
+transformer.h.2.mlp 1
+transformer.h.2 2
+transformer.h.3.ln_1 1
+transformer.h.3.attn.c_attn 1
+transformer.h.3.attn.attn_dropout 1
+transformer.h.3.attn.c_proj 1
+transformer.h.3.attn.resid_dropout 1
+transformer.h.3.attn 2
+transformer.h.3.ln_2 1
+transformer.h.3.mlp.c_fc2 1
+transformer.h.3.mlp.c_fc 1
+transformer.h.3.mlp.act 1
+transformer.h.3.mlp.c_proj 1
+transformer.h.3.mlp.dropout 1
+transformer.h.3.mlp 1
+transformer.h.3 2
+transformer.h.4.ln_1 1
+transformer.h.4.attn.c_attn 1
+transformer.h.4.attn.attn_dropout 1
+transformer.h.4.attn.c_proj 1
+transformer.h.4.attn.resid_dropout 1
+transformer.h.4.attn 2
+transformer.h.4.ln_2 1
+transformer.h.4.mlp.c_fc2 1
+transformer.h.4.mlp.c_fc 1
+transformer.h.4.mlp.act 1
+transformer.h.4.mlp.c_proj 1
+transformer.h.4.mlp.dropout 1
+transformer.h.4.mlp 1
+transformer.h.4 2
+transformer.h.5.ln_1 1
+transformer.h.5.attn.c_attn 1
+transformer.h.5.attn.attn_dropout 1
+transformer.h.5.attn.c_proj 1
+transformer.h.5.attn.resid_dropout 1
+transformer.h.5.attn 2
+transformer.h.5.ln_2 1
+transformer.h.5.mlp.c_fc2 1
+transformer.h.5.mlp.c_fc 1
+transformer.h.5.mlp.act 1
+transformer.h.5.mlp.c_proj 1
+transformer.h.5.mlp.dropout 1
+transformer.h.5.mlp 1
+transformer.h.5 2
+transformer.h.6.ln_1 1
+transformer.h.6.attn.c_attn 1
+transformer.h.6.attn.attn_dropout 1
+transformer.h.6.attn.c_proj 1
+transformer.h.6.attn.resid_dropout 1
+transformer.h.6.attn 2
+transformer.h.6.ln_2 1
+transformer.h.6.mlp.c_fc2 1
+transformer.h.6.mlp.c_fc 1
+transformer.h.6.mlp.act 1
+transformer.h.6.mlp.c_proj 1
+transformer.h.6.mlp.dropout 1
+transformer.h.6.mlp 1
+transformer.h.6 2
+transformer.h.7.ln_1 1
+transformer.h.7.attn.c_attn 1
+transformer.h.7.attn.attn_dropout 1
+transformer.h.7.attn.c_proj 1
+transformer.h.7.attn.resid_dropout 1
+transformer.h.7.attn 2
+transformer.h.7.ln_2 1
+transformer.h.7.mlp.c_fc2 1
+transformer.h.7.mlp.c_fc 1
+transformer.h.7.mlp.act 1
+transformer.h.7.mlp.c_proj 1
+transformer.h.7.mlp.dropout 1
+transformer.h.7.mlp 1
+transformer.h.7 2
+transformer.h.8.ln_1 1
+transformer.h.8.attn.c_attn 1
+transformer.h.8.attn.attn_dropout 1
+transformer.h.8.attn.c_proj 1
+transformer.h.8.attn.resid_dropout 1
+transformer.h.8.attn 2
+transformer.h.8.ln_2 1
+transformer.h.8.mlp.c_fc2 1
+transformer.h.8.mlp.c_fc 1
+transformer.h.8.mlp.act 1
+transformer.h.8.mlp.c_proj 1
+transformer.h.8.mlp.dropout 1
+transformer.h.8.mlp 1
+transformer.h.8 2
+transformer.h.9.ln_1 1
+transformer.h.9.attn.c_attn 1
+transformer.h.9.attn.attn_dropout 1
+transformer.h.9.attn.c_proj 1
+transformer.h.9.attn.resid_dropout 1
+transformer.h.9.attn 2
+transformer.h.9.ln_2 1
+transformer.h.9.mlp.c_fc2 1
+transformer.h.9.mlp.c_fc 1
+transformer.h.9.mlp.act 1
+transformer.h.9.mlp.c_proj 1
+transformer.h.9.mlp.dropout 1
+transformer.h.9.mlp 1
+transformer.h.9 2
+transformer.h.10.ln_1 1
+transformer.h.10.attn.c_attn 1
+transformer.h.10.attn.attn_dropout 1
+transformer.h.10.attn.c_proj 1
+transformer.h.10.attn.resid_dropout 1
+transformer.h.10.attn 2
+transformer.h.10.ln_2 1
+transformer.h.10.mlp.c_fc2 1
+transformer.h.10.mlp.c_fc 1
+transformer.h.10.mlp.act 1
+transformer.h.10.mlp.c_proj 1
+transformer.h.10.mlp.dropout 1
+transformer.h.10.mlp 1
+transformer.h.10 2
+transformer.h.11.ln_1 1
+transformer.h.11.attn.c_attn 1
+transformer.h.11.attn.attn_dropout 1
+transformer.h.11.attn.c_proj 1
+transformer.h.11.attn.resid_dropout 1
+transformer.h.11.attn 2
+transformer.h.11.ln_2 1
+transformer.h.11.mlp.c_fc2 1
+transformer.h.11.mlp.c_fc 1
+transformer.h.11.mlp.act 1
+transformer.h.11.mlp.c_proj 1
+transformer.h.11.mlp.dropout 1
+transformer.h.11.mlp 1
+transformer.h.11 2
+transformer.h.12.ln_1 1
+transformer.h.12.attn.c_attn 1
+transformer.h.12.attn.attn_dropout 1
+transformer.h.12.attn.c_proj 1
+transformer.h.12.attn.resid_dropout 1
+transformer.h.12.attn 2
+transformer.h.12.ln_2 1
+transformer.h.12.mlp.c_fc2 1
+transformer.h.12.mlp.c_fc 1
+transformer.h.12.mlp.act 1
+transformer.h.12.mlp.c_proj 1
+transformer.h.12.mlp.dropout 1
+transformer.h.12.mlp 1
+transformer.h.12 2
+transformer.h.13.ln_1 1
+transformer.h.13.attn.c_attn 1
+transformer.h.13.attn.attn_dropout 1
+transformer.h.13.attn.c_proj 1
+transformer.h.13.attn.resid_dropout 1
+transformer.h.13.attn 2
+transformer.h.13.ln_2 1
+transformer.h.13.mlp.c_fc2 1
+transformer.h.13.mlp.c_fc 1
+transformer.h.13.mlp.act 1
+transformer.h.13.mlp.c_proj 1
+transformer.h.13.mlp.dropout 1
+transformer.h.13.mlp 1
+transformer.h.13 2
+transformer.h.14.ln_1 1
+transformer.h.14.attn.c_attn 1
+transformer.h.14.attn.attn_dropout 1
+transformer.h.14.attn.c_proj 1
+transformer.h.14.attn.resid_dropout 1
+transformer.h.14.attn 2
+transformer.h.14.ln_2 1
+transformer.h.14.mlp.c_fc2 1
+transformer.h.14.mlp.c_fc 1
+transformer.h.14.mlp.act 1
+transformer.h.14.mlp.c_proj 1
+transformer.h.14.mlp.dropout 1
+transformer.h.14.mlp 1
+transformer.h.14 2
+transformer.h.15.ln_1 1
+transformer.h.15.attn.c_attn 1
+transformer.h.15.attn.attn_dropout 1
+transformer.h.15.attn.c_proj 1
+transformer.h.15.attn.resid_dropout 1
+transformer.h.15.attn 2
+transformer.h.15.ln_2 1
+transformer.h.15.mlp.c_fc2 1
+transformer.h.15.mlp.c_fc 1
+transformer.h.15.mlp.act 1
+transformer.h.15.mlp.c_proj 1
+transformer.h.15.mlp.dropout 1
+transformer.h.15.mlp 1
+transformer.h.15 2
+transformer.h.16.ln_1 1
+transformer.h.16.attn.c_attn 1
+transformer.h.16.attn.attn_dropout 1
+transformer.h.16.attn.c_proj 1
+transformer.h.16.attn.resid_dropout 1
+transformer.h.16.attn 2
+transformer.h.16.ln_2 1
+transformer.h.16.mlp.c_fc2 1
+transformer.h.16.mlp.c_fc 1
+transformer.h.16.mlp.act 1
+transformer.h.16.mlp.c_proj 1
+transformer.h.16.mlp.dropout 1
+transformer.h.16.mlp 1
+transformer.h.16 2
+transformer.h.17.ln_1 1
+transformer.h.17.attn.c_attn 1
+transformer.h.17.attn.attn_dropout 1
+transformer.h.17.attn.c_proj 1
+transformer.h.17.attn.resid_dropout 1
+transformer.h.17.attn 2
+transformer.h.17.ln_2 1
+transformer.h.17.mlp.c_fc2 1
+transformer.h.17.mlp.c_fc 1
+transformer.h.17.mlp.act 1
+transformer.h.17.mlp.c_proj 1
+transformer.h.17.mlp.dropout 1
+transformer.h.17.mlp 1
+transformer.h.17 2
+transformer.h.18.ln_1 1
+transformer.h.18.attn.c_attn 1
+transformer.h.18.attn.attn_dropout 1
+transformer.h.18.attn.c_proj 1
+transformer.h.18.attn.resid_dropout 1
+transformer.h.18.attn 2
+transformer.h.18.ln_2 1
+transformer.h.18.mlp.c_fc2 1
+transformer.h.18.mlp.c_fc 1
+transformer.h.18.mlp.act 1
+transformer.h.18.mlp.c_proj 1
+transformer.h.18.mlp.dropout 1
+transformer.h.18.mlp 1
+transformer.h.18 2
+transformer.h.19.ln_1 1
+transformer.h.19.attn.c_attn 1
+transformer.h.19.attn.attn_dropout 1
+transformer.h.19.attn.c_proj 1
+transformer.h.19.attn.resid_dropout 1
+transformer.h.19.attn 2
+transformer.h.19.ln_2 1
+transformer.h.19.mlp.c_fc2 1
+transformer.h.19.mlp.c_fc 1
+transformer.h.19.mlp.act 1
+transformer.h.19.mlp.c_proj 1
+transformer.h.19.mlp.dropout 1
+transformer.h.19.mlp 1
+transformer.h.19 2
+transformer.h.20.ln_1 1
+transformer.h.20.attn.c_attn 1
+transformer.h.20.attn.attn_dropout 1
+transformer.h.20.attn.c_proj 1
+transformer.h.20.attn.resid_dropout 1
+transformer.h.20.attn 2
+transformer.h.20.ln_2 1
+transformer.h.20.mlp.c_fc2 1
+transformer.h.20.mlp.c_fc 1
+transformer.h.20.mlp.act 1
+transformer.h.20.mlp.c_proj 1
+transformer.h.20.mlp.dropout 1
+transformer.h.20.mlp 1
+transformer.h.20 2
+transformer.h.21.ln_1 1
+transformer.h.21.attn.c_attn 1
+transformer.h.21.attn.attn_dropout 1
+transformer.h.21.attn.c_proj 1
+transformer.h.21.attn.resid_dropout 1
+transformer.h.21.attn 2
+transformer.h.21.ln_2 1
+transformer.h.21.mlp.c_fc2 1
+transformer.h.21.mlp.c_fc 1
+transformer.h.21.mlp.act 1
+transformer.h.21.mlp.c_proj 1
+transformer.h.21.mlp.dropout 1
+transformer.h.21.mlp 1
+transformer.h.21 2
+transformer.h.22.ln_1 1
+transformer.h.22.attn.c_attn 1
+transformer.h.22.attn.attn_dropout 1
+transformer.h.22.attn.c_proj 1
+transformer.h.22.attn.resid_dropout 1
+transformer.h.22.attn 2
+transformer.h.22.ln_2 1
+transformer.h.22.mlp.c_fc2 1
+transformer.h.22.mlp.c_fc 1
+transformer.h.22.mlp.act 1
+transformer.h.22.mlp.c_proj 1
+transformer.h.22.mlp.dropout 1
+transformer.h.22.mlp 1
+transformer.h.22 2
+transformer.h.23.ln_1 1
+transformer.h.23.attn.c_attn 1
+transformer.h.23.attn.attn_dropout 1
+transformer.h.23.attn.c_proj 1
+transformer.h.23.attn.resid_dropout 1
+transformer.h.23.attn 2
+transformer.h.23.ln_2 1
+transformer.h.23.mlp.c_fc2 1
+transformer.h.23.mlp.c_fc 1
+transformer.h.23.mlp.act 1
+transformer.h.23.mlp.c_proj 1
+transformer.h.23.mlp.dropout 1
+transformer.h.23.mlp 1
+transformer.h.23 2
+transformer.h.24.ln_1 1
+transformer.h.24.attn.c_attn 1
+transformer.h.24.attn.attn_dropout 1
+transformer.h.24.attn.c_proj 1
+transformer.h.24.attn.resid_dropout 1
+transformer.h.24.attn 2
+transformer.h.24.ln_2 1
+transformer.h.24.mlp.c_fc2 1
+transformer.h.24.mlp.c_fc 1
+transformer.h.24.mlp.act 1
+transformer.h.24.mlp.c_proj 1
+transformer.h.24.mlp.dropout 1
+transformer.h.24.mlp 1
+transformer.h.24 2
+transformer.h.25.ln_1 1
+transformer.h.25.attn.c_attn 1
+transformer.h.25.attn.attn_dropout 1
+transformer.h.25.attn.c_proj 1
+transformer.h.25.attn.resid_dropout 1
+transformer.h.25.attn 2
+transformer.h.25.ln_2 1
+transformer.h.25.mlp.c_fc2 1
+transformer.h.25.mlp.c_fc 1
+transformer.h.25.mlp.act 1
+transformer.h.25.mlp.c_proj 1
+transformer.h.25.mlp.dropout 1
+transformer.h.25.mlp 1
+transformer.h.25 2
+transformer.h.26.ln_1 1
+transformer.h.26.attn.c_attn 1
+transformer.h.26.attn.attn_dropout 1
+transformer.h.26.attn.c_proj 1
+transformer.h.26.attn.resid_dropout 1
+transformer.h.26.attn 2
+transformer.h.26.ln_2 1
+transformer.h.26.mlp.c_fc2 1
+transformer.h.26.mlp.c_fc 1
+transformer.h.26.mlp.act 1
+transformer.h.26.mlp.c_proj 1
+transformer.h.26.mlp.dropout 1
+transformer.h.26.mlp 1
+transformer.h.26 2
+transformer.h.27.ln_1 1
+transformer.h.27.attn.c_attn 1
+transformer.h.27.attn.attn_dropout 1
+transformer.h.27.attn.c_proj 1
+transformer.h.27.attn.resid_dropout 1
+transformer.h.27.attn 2
+transformer.h.27.ln_2 1
+transformer.h.27.mlp.c_fc2 1
+transformer.h.27.mlp.c_fc 1
+transformer.h.27.mlp.act 1
+transformer.h.27.mlp.c_proj 1
+transformer.h.27.mlp.dropout 1
+transformer.h.27.mlp 1
+transformer.h.27 2
+transformer.h.28.ln_1 1
+transformer.h.28.attn.c_attn 1
+transformer.h.28.attn.attn_dropout 1
+transformer.h.28.attn.c_proj 1
+transformer.h.28.attn.resid_dropout 1
+transformer.h.28.attn 2
+transformer.h.28.ln_2 1
+transformer.h.28.mlp.c_fc2 1
+transformer.h.28.mlp.c_fc 1
+transformer.h.28.mlp.act 1
+transformer.h.28.mlp.c_proj 1
+transformer.h.28.mlp.dropout 1
+transformer.h.28.mlp 1
+transformer.h.28 2
+transformer.h.29.ln_1 1
+transformer.h.29.attn.c_attn 1
+transformer.h.29.attn.attn_dropout 1
+transformer.h.29.attn.c_proj 1
+transformer.h.29.attn.resid_dropout 1
+transformer.h.29.attn 2
+transformer.h.29.ln_2 1
+transformer.h.29.mlp.c_fc2 1
+transformer.h.29.mlp.c_fc 1
+transformer.h.29.mlp.act 1
+transformer.h.29.mlp.c_proj 1
+transformer.h.29.mlp.dropout 1
+transformer.h.29.mlp 1
+transformer.h.29 2
+transformer.h.30.ln_1 1
+transformer.h.30.attn.c_attn 1
+transformer.h.30.attn.attn_dropout 1
+transformer.h.30.attn.c_proj 1
+transformer.h.30.attn.resid_dropout 1
+transformer.h.30.attn 2
+transformer.h.30.ln_2 1
+transformer.h.30.mlp.c_fc2 1
+transformer.h.30.mlp.c_fc 1
+transformer.h.30.mlp.act 1
+transformer.h.30.mlp.c_proj 1
+transformer.h.30.mlp.dropout 1
+transformer.h.30.mlp 1
+transformer.h.30 2
+transformer.h.31.ln_1 1
+transformer.h.31.attn.c_attn 1
+transformer.h.31.attn.attn_dropout 1
+transformer.h.31.attn.c_proj 1
+transformer.h.31.attn.resid_dropout 1
+transformer.h.31.attn 2
+transformer.h.31.ln_2 1
+transformer.h.31.mlp.c_fc2 1
+transformer.h.31.mlp.c_fc 1
+transformer.h.31.mlp.act 1
+transformer.h.31.mlp.c_proj 1
+transformer.h.31.mlp.dropout 1
+transformer.h.31.mlp 1
+transformer.h.31 2
+transformer.ln_f 1
+transformer 3
+lm_head 1
+ 3
+'''
