@@ -506,14 +506,19 @@ class Distiller:
         else:
             raise ValueError(f"Error file: distill_llm.py, Invalid number: line 491+-")
 
-
+    # normal --> clear hook and then do the llm pre-training loss
+    # use the below caculate loss first. and then remove the hook to 
     def backward_hook(self, module_name, model_name):
         if model_name == "smaller":
-            def b_hook(module, grad_input, grad_output):
-                self.smaller_hook_backward_dict[module_name] = grad_output
+            def b_hook(module, grad_input, grad_output, is_before=True):
+                if is_before:
+                    # downsampled_grad_input = _subsample_embeddings_dimlast(self.larger_hook_backward_dict[module_name], grad_input, self.smaller_model.reduction_factor) 
+                    # return downsampled_grad_input
+                else:
+                    self.smaller_hook_backward_dict[module_name] = grad_output
             return b_hook
         elif model_name == "larger":
-            def b_hook(module, grad_input, grad_output):
+            def b_hook(module, grad_input, grad_output, is_before=True):
                 self.larger_hook_backward_dict[module_name] = grad_output
             return b_hook
         else:
@@ -525,7 +530,7 @@ class Distiller:
             # weight, basi, embedding wte, needs?
             #if hasattr(module, 'weight'):
             module.register_forward_hook(self.forward_hook(module_name, model_name))
-            module.register_backward_hook(self.backward_hook(module_name, model_name))
+            module.register_full_backward_hook(self.backward_hook(module_name, model_name))
 
     def larger_register_hook(self, model, model_name="larger"):
         #for module_name, module in model.named_parameters():
@@ -533,7 +538,7 @@ class Distiller:
             # weight, basi, embedding wte, needs?
             #if hasattr(module, 'weight'):
             module.register_forward_hook(self.forward_hook(module_name, model_name))
-            module.register_backward_hook(self.backward_hook(module_name, model_name))
+            module.register_full_backward_hook(self.backward_hook(module_name, model_name))
 
     def loss_hidden(self, output_large, output_small):
         ############
@@ -568,9 +573,31 @@ class Distiller:
         #     else:
         #         print("fail:", name)
     
+    def forward_loss(self, larger_model, smaller_model, larger_hook_forward_dict, smaller_hook_forward_dict):
+        #block-level now --> module-level --> matric weight level 
+
+        # !!!!!! because dict is on cpu, so I need to move it to gpu !!!!!!!!!!!!!! Need to change to tensor
+        # Create downsample x: Downsample larger_model hidden_state * W^T_(smaller_model) to get x 
+        loss = 0
+        for layer in range(len(self.smaller_model.model.transformer.h)):
+            if layer == 0:
+                downsampled_x = _subsample_embeddings_dimlast(larger_hook_forward_dict['transformer.wte'], smaller_hook_forward_dict['transformer.wte'], self.smaller_model.reduction_factor)
+                #downsampled_x = smaller_model.model.drop(downsampled_x)
+                #downsampled_x = _subsample_embeddings_dimlast(larger_hook_forward_dict['transformer.drop'], smaller_hook_forward_dict['transformer.drop'], self.smaller_model.reduction_factor)
+                y_prime = smaller_model.model.transformer.h[layer](downsampled_x)[0]
+                y = smaller_hook_forward_dict[f"transformer.h.{layer}"][0]
+                f"transformer.h.{layer-1}"
+            else:  
+                downsampled_x = _subsample_embeddings_dimlast(larger_hook_forward_dict[f"transformer.h.{layer-1}"][0], smaller_hook_forward_dict[f"transformer.h.{layer-1}"][0], self.smaller_model.reduction_factor)
+                y_prime = smaller_model.model.transformer.h[layer](downsampled_x)[0]
+                y = smaller_hook_forward_dict['transformer.h'+"."+str(layer)][0]
+
+            #loss += F.kl_div(y_prime.log(), y, reduction='batchmean')
+            loss += torch.nn.MSELoss()(y_prime, y)
+        return loss
+        
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
-
         '''
         target_log = "../log/"+str(self.target_dir)+"/"+str(self.learning_rate)
         if os.path.isdir(target_log+"/wandb"):
@@ -601,10 +628,7 @@ class Distiller:
 
         self.larger_model.model.to(self.device)
         self.smaller_model.model.to(self.device)
-        #self.smaller_model_copy = copy.deepcopy(self.smaller_model)
-        #print(33333)
-        #print(self.smaller_model_copy)
-        #exit()
+
 
         # Need to revise
         #half: fp16
@@ -619,24 +643,18 @@ class Distiller:
 
         print()
         print("lr:{}".format(self.learning_rate))
-        loss_1 = None
-        loss_2 = None
+        loss_1 = 0
+        loss_2 = 0
 
         self.smaller_register_hook(self.smaller_model.model)
         self.larger_register_hook(self.larger_model.model)
         
-
-       
-        # input a vector to replace the hidden state after the word emgedding layers in the self.smaller_model.model and use the replaced hidden state to train the self.smaller_model.model
-        # hidden_state = torch.randn(batch_size, seq_length, hidden_dim)  # Replace with your desired hidden state
-        # output_small.hidden_states[0] = hidden_state
-        # output_small = self.smaller_model.forward(output_small)
-
         #loss_1 --> forward pass: weight matrix
         #loss_2 --> backward pass: weight matrix
         #loss_3 --> hidden state difference
         for i, batch in enumerate(prog):
-
+            
+            #
             self.opt.zero_grad()
 
             if i == stop_batch:
@@ -646,105 +664,24 @@ class Distiller:
             output_large = self.larger_model.forward(batch)
             output_small = self.smaller_model.forward(batch)
 
-            # (self.larger_model.model.wte.weight.shape)
+            # step1: forward_loss
+            forward_loss = self.forward_loss(self.larger_model, self.smaller_model, self.larger_hook_forward_dict, self.smaller_hook_forward_dict)
             
-            #print(self.smaller_hook_forward_dict)
-            # check transformer.h.19.attn 2
-
-            # for i, j in self.smaller_hook_forward_dict.items():
-            #     #if hasattr(j, 'weight'): 
-            #     print(i, len(j))
-
-            # !!!!!! because dict is on cpu, so I need to move it to gpu !!!!!!!!!!!!!! Need to change to tensor
-            # Create downsample x: Downsample larger_model hidden_state * W^T_(smaller_model) to get x 
-            larger_hidden = self.larger_hook_forward_dict['transformer.wte'] #torch.Size([1, 2048, 4096])
-            smaller_hidden = self.smaller_hook_forward_dict['transformer.wte'] #torch.Size([1, 2048, 1024])
-            x = _subsample_embeddings_dimlast(larger_hidden, smaller_hidden, self.smaller_model.reduction_factor)
-            
-            #Get the self.smaller_model.model.transformer.wte's weight and print it out
-            weight_tensor = self.smaller_model.model.transformer.wte.weight.data #[32032, 1024]
-            print(weight_tensor.shape) #[32032, 1024]
-
-   
-            # x' = x_plam, W = wte_tensor
-            # x_plam.shape --> torch.Size([1, 2048, 1024]) 
-            # wte_tensor.shape --> [32032, 1024]
-            # x.shape --> torch.Size([1, 2048])
-            # xW = x' --> x = x'W^T
-
-            
-            import pdb; pdb.set_trace()
-            
-            exit()
-            
-            # for name, para in self.smaller_model.model.named_parameters():
-            #     print(name, para.shape)
-
-
-            
-
-            ######
-            #(wte): Embedding(32032, 4096)
-            # implement downsampling
-            large_hidden_states = output_large.hidden_states
-            large_hidden_states = torch.stack(large_hidden_states)
-            small_hidden_states = self._subsample_embeddings_dim1(large_hidden_states, output_small.hidden_states)
-
-            # replace hidden states in output_small with downsampled hidden states
-            output_small.hidden_states = small_hidden_states
-
-            # perform inference on smaller model
-            output_small = self.smaller_model.forward(output_small)
-
-            print(output_small)
-            ######
-            
-
-            import pdb; pdb.set_trace()
-                
-            exit()
-            
-            # cnt = 0
-            # for name, module in self.smaller_model.named_modules():
-            #     if cnt == 0:
-                    
-            #     else:
-            #         previous_module = 
-            #         later_module =
-            #         #if hasattr(module, 'weight'): 
-            # cnt = 0
-            
-            print("---------")
-            print(len(self.smaller_hook_forward_dict))
-            print("==========")
-            exit()
-             
-            # for k in self.smaller_hook_forward_dict.keys(): 
-            #     print(self.smaller_model.model[k])
-
-            # print("---------")
-            # print(self.smaller_hook_forward_dict)
-            #print("==========")
-
-            exit()
-             
-            # Clean hook:
-            self.hook_forward_dict.clear()
-            self.hook_backward_dict.clear()
-            
-            # Register hook:
-            self.register_hook(self.smaller_model.model)
-
-            # step1: downsample X:
-            loss_1 = self.loss_hidden(output_large, output_small)
             # step2:
-            #loss_2 = self.loss_layer(output_large, output_small)
-            #loss = loss_1 + loss_2
-            #loss = loss_2
-            loss = loss_1
+
+            # step3:
+            #loss_1 = self.loss_hidden(output_large, output_small)
+
+            # total:
+            #loss = loss_1
+            loss = forward_loss
+
+            stop_batch=10
+            print(loss)
+            
             #accumulated_loss += loss_2.item()
             #total_loss += loss_2.item()
-            #prog.set_description(f"loss: {loss_2.item():.3f}")
+            prog.set_description(f"loss: {loss.item():.3f}")
             '''
             wandb.log(
                 {
@@ -770,6 +707,21 @@ class Distiller:
             #self.accelerator.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
 
             self.opt.step()
+
+            # clean self.larger_model gredient
+            with torch.no_grad():
+                self.larger_model.model.zero_grad()
+            
+            # Clean hook:
+            self.larger_hook_forward_dict.clear()
+            self.larger_hook_backward_dict.clear()
+            self.smaller_hook_forward_dict.clear()
+            self.smaller_hook_backward_dict.clear()
+            
+            # Register hook:
+            self.smaller_register_hook(self.smaller_model.model)
+            self.larger_register_hook(self.larger_model.model)
+
             continue
 
             if (i + 1) % self.grad == 0:
