@@ -512,8 +512,16 @@ class Distiller:
         if model_name == "smaller":
             def b_hook(module, grad_input, grad_output, is_before=True):
                 if is_before:
-                    # downsampled_grad_input = _subsample_embeddings_dimlast(self.larger_hook_backward_dict[module_name], grad_input, self.smaller_model.reduction_factor) 
-                    # return downsampled_grad_input
+                    ######################
+                    # new_grad_input_tensor = torch.randn(1, 10) 
+                    # modified_grad_input = tuple([new_grad_input_tensor if g is not None else None for g in grad_input])
+                    # print("New grad_input before backward:", modified_grad_input)
+                    # return modified_grad_input
+                    ######################
+                    downsampled_grad_input = _subsample_embeddings_dimlast(self.larger_hook_backward_dict[module_name], grad_input, self.smaller_model.reduction_factor) 
+                    return downsampled_grad_input
+                    ######################
+                    # return grad_input
                 else:
                     self.smaller_hook_backward_dict[module_name] = grad_output
             return b_hook
@@ -523,6 +531,20 @@ class Distiller:
             return b_hook
         else:
             raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
+    
+    
+    # def backward_hook(self, module_name, model_name):
+    #     if model_name == "smaller":
+    #         def b_hook(module, grad_input, grad_output):
+    #             self.smaller_hook_backward_dict[module_name] = grad_output
+    #         return b_hook
+    #     elif model_name == "larger":
+    #         def b_hook(module, grad_input, grad_output):
+    #             self.larger_hook_backward_dict[module_name] = grad_output
+    #         return b_hook
+    #     else:
+    #         raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
+
 
     def smaller_register_hook(self, model, model_name="smaller"):
         #for module_name, module in model.named_parameters():
@@ -662,9 +684,21 @@ class Distiller:
             self.step = i + 1
 
             output_large = self.larger_model.forward(batch)
-            output_small = self.smaller_model.forward(batch)
+            #output_small = self.smaller_model.forward(batch)
 
+            # for name, param in self.smaller_hook_backward_dict.items():
+            #     print(name, len(param))
+            
+            # import pdb; pdb.set_trace()
+            
+            # exit()
+            
+            # step1: backward_loss
+            
+            
+            
             # step1: forward_loss
+            output_small = self.smaller_model.forward(batch)
             forward_loss = self.forward_loss(self.larger_model, self.smaller_model, self.larger_hook_forward_dict, self.smaller_hook_forward_dict)
             
             # step2:

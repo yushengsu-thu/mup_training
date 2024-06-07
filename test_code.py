@@ -105,7 +105,10 @@ for step in range(2):  # 简单训练 3 个步骤
     #print("------")
     #exit()
     
-    outputs = model(inputs)
+    # outputs = model(inputs)
+    # print(outputs)
+    # model
+    
     #print("out:", outputs)
     loss = criterion(outputs, targets)
 
