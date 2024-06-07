@@ -351,7 +351,7 @@ class Distiller:
             #fused=True,
         )
         '''
-        self.opt = optim.AdamW(self.smaller_model.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        self.opt = optim.AdamW(self.smaller_model.model.parameters()+self.larger_model.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         #self.distill_model = torch.compile(distill_model)
         #optimizer = optim.AdamW(self.smaller_model.parameters(), lr=self.learning_rate, weight_decay=parser.weight_decay)
@@ -700,7 +700,7 @@ class Distiller:
 
         #self.smaller_register_hook(self.smaller_model.model)
         self.register_hook(self.larger_model.model, "larger", "forward")
-        #self.register_hook(self.larger_model.model, "larger", "backward")
+        self.register_hook(self.larger_model.model, "larger", "backward")
         
         #loss_1 --> forward pass: weight matrix
         #loss_2 --> backward pass: weight matrix
@@ -716,6 +716,12 @@ class Distiller:
             x, y = batch[:, :-1], batch[:, 1:]
             #output_large = self.larger_model.forward(x)
             larger_model_next_token_prediction_loss = self.larger_model.next_token_prediction_loss(x, y)
+            for n, p in self.larger_hook_backward_dict.items():
+                print(n, len(p)) 
+            
+            import pdb; pdb.set_trace()
+            exit()
+            
             #output_small = self.smaller_model.forward(batch)
 
             # for name, param in self.smaller_hook_backward_dict.items():
@@ -727,17 +733,14 @@ class Distiller:
             
             # step1: backward_loss
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
-            print("ininininininininni")
-            self.register_hook(self.smaller_model.model, "smaller", "backward")
-            self.register_hook(self.smaller_model.model, "smaller", "forward")
-            self.check_for_hooks(self.smaller_model.model)
-            print("============")
-            self.remove_hook(self.smaller_forward_hook_list)
-            self.remove_hook(self.smaller_backward_hook_list)
-            self.check_for_hooks(self.smaller_model.model)
-            print("============")
-            import pdb; pdb.set_trace()
-            exit()
+            # self.register_hook(self.smaller_model.model, "smaller", "backward")
+            # self.register_hook(self.smaller_model.model, "smaller", "forward")
+            # self.check_for_hooks(self.smaller_model.model)
+            # print("============")
+            # self.remove_hook(self.smaller_forward_hook_list)
+            # self.remove_hook(self.smaller_backward_hook_list)
+            # self.check_for_hooks(self.smaller_model.model)
+
 
 
             output_small = self.smaller_model.forward(batch)
@@ -751,7 +754,7 @@ class Distiller:
             ##########
             
             
-            # step1: forward_loss
+            # step1: forward_loss #[issue: need to use the caculate loss/gredient to update the self.smaller_model: it fails now]
             output_small = self.smaller_model.forward(batch)
             forward_loss = self.forward_loss(self.larger_model, self.smaller_model, self.larger_hook_forward_dict, self.smaller_hook_forward_dict)
             
