@@ -215,6 +215,7 @@ class Trainer:
 
         for i, batch in enumerate(prog):
             self.step = i + 1
+            
             loss = self.train_step(batch)
             prog.set_description(f"loss: {loss.item():.3f}")
             wandb.log(
