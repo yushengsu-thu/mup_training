@@ -48,6 +48,7 @@ class DatasetWrapper(IterableDataset):
         )
         self.max_tokens = max_tokens
         self.cache_dir = cache_dir
+        # pre-load the dataset --> pre-training data needed: 
         self.dataset = load_dataset("Open-Orca/SlimOrca-Dedup",
                 split="train",
                 cache_dir=self.cache_dir
@@ -351,7 +352,16 @@ class Distiller:
             #fused=True,
         )
         '''
-        self.opt = optim.AdamW(self.smaller_model.model.parameters()+self.larger_model.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+
+        self.opt = optim.AdamW(self.smaller_model.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        #update the larger llm and smaller llm
+        # This creates a list of all parameters by iterating over both parameter generators
+        #params = list(self.smaller_model.model.parameters()) + list(self.larger_model.model.parameters())
+        #self.opt = optim.AdamW(params, lr=self.learning_rate, weight_decay=self.weight_decay)
+
+        #from itertools import chain
+        #self.opt = optim.AdamW(chain(self.smaller_model.model.parameters(), self.larger_model.model.parameters()), lr=self.learning_rate, weight_decay=self.weight_decay)
+
 
         #self.distill_model = torch.compile(distill_model)
         #optimizer = optim.AdamW(self.smaller_model.parameters(), lr=self.learning_rate, weight_decay=parser.weight_decay)
@@ -858,8 +868,7 @@ if __name__ == "__main__":
     main()
 
 
-
-
+# 1.75 B
 
 
 
