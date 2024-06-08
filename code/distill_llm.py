@@ -1,5 +1,22 @@
+###############
+# (later than) pytorch version: 2.0.1+cu117
+# RuntimeError: Output 0 of BackwardHookFunctionBackward is a view and is being modified inplace. This view was created inside a custom Function (or because an input was returned as-is) and the autograd logic to handle view+inplace would override the custom backward associated with the custom Function, leading to incorrect gradients. This behavior is forbidden. You can fix this by cloning the output of the custom Function.
+
+# Code root: /home/yusheng.su/.cache/huggingface/modules/transformers_modules/LLM360/CrystalCoder/a8c07fe67eb9ceb39acd5768c812d07dfc256015/modeling_crystalcoder.py
+
+## (1)
+# #Modify: in modeling_crystalcoder.py Line: 1030
+## change from: hidden_states *= torch.tensor(some_scaling_factor, device=hidden_states.device)
+## to: hidden_states = hidden_states * torch.tensor(some_scaling_factor, device=hidden_states.device)
+
+## (2)
+# #Modify: in modeling_crystalcoder.py Line: line 1299
+##change from: lm_logits *= torch.tensor(float(self.output_logits_scale), dtype=lm_logits.dtype, device=lm_logits.device)
+##to: lm_logits = lm_logits * torch.tensor(float(self.output_logits_scale), dtype=lm_logits.dtype, device=lm_logits.device
+###############
 
 import copy
+from sympy import O
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
@@ -107,8 +124,7 @@ class LargerModel:
         z = z.view(-1, z.shape[-1])
         loss = F.cross_entropy(z, y)
         return loss
-
-
+    
 
 # 1 D
 def _subsample_embeddings(matrix_original, matrix_target, reduction_factor):
@@ -532,10 +548,10 @@ class Distiller:
 
     ## normal --> clear hook and then do the llm pre-training loss
     ## use the below caculate loss first. and then remove the hook to 
-    def backward_hook(self, module_name, model_name):
+    def backward_hook(self, module_name, model_name, is_before):
         if model_name == "smaller":
             #def b_hook(module, grad_input, grad_output, is_before=True):
-            def b_hook(module, grad_input, grad_output, is_before=False):
+            def s_b_hook(module, grad_input, grad_output, is_before=is_before):
                 if is_before:
                     ######################
                     # new_grad_input_tensor = torch.randn(1, 10) 
@@ -546,18 +562,40 @@ class Distiller:
                     # downsampled_grad_input = _subsample_embeddings_dimlast(self.larger_hook_backward_dict[module_name], grad_input, self.smaller_model.reduction_factor) 
                     # return downsampled_grad_input
                     ######################
-                    self.smaller_hook_backward_dict[module_name] = grad_output
+                    # print(1111111111)
+                    # print(grad_input)
+                    # print(1111111111)
+                    # exit()
+                    #tensor(14.6016, device='cuda:0', dtype=torch.float16)
+                    self.smaller_hook_backward_dict[module_name] = grad_output ###
                     return grad_input
                 else:
                     self.smaller_hook_backward_dict[module_name] = grad_output
-            return b_hook
+            return s_b_hook
         elif model_name == "larger":
-            def b_hook(module, grad_input, grad_output, is_before=True):
-                self.larger_hook_backward_dict[module_name] = grad_output
-            return b_hook
+            def l_b_hook(module, grad_input, grad_output, is_before=is_before):
+                if is_before:
+                    self.larger_hook_backward_dict[module_name] = grad_output
+                    print(f"grad_input: {grad_input}")
+                    print(f"grad_output: {grad_output}")
+                    return grad_input
+                else:
+                    self.larger_hook_backward_dict[module_name] = grad_output
+                    print(f"grad_input: {grad_input}")
+                    print(f"grad_output: {grad_output}")
+            return l_b_hook
         else:
             raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
     
+    
+
+    # def b_hook(self, module, grad_input, grad_output, is_before=True):
+    #     if is_before:
+    #         self.smaller_hook_backward_dict[module] = grad_output
+    #         return grad_input
+    #     else:
+    #         self.smaller_hook_backward_dict[module] = grad_output
+
     
     # def backward_hook(self, module_name, model_name):
     #     if model_name == "smaller":
@@ -578,8 +616,6 @@ class Distiller:
             #for module_name, module in model.named_parameters():
             total_hook_list = []
             for module_name, module in model.named_modules():
-                # weight, basi, embedding wte, needs?
-                # if hasattr(module, 'weight'):
                 hook = module.register_forward_hook(self.forward_hook(module_name, model_name))
                 total_hook_list.append(hook)
             if model_name == "smaller":
@@ -592,7 +628,7 @@ class Distiller:
             total_hook_list = []
             for module_name, module in model.named_modules():
                 #module.register_backward_hook(self.backward_hook(module_name, model_name))
-                hook = module.register_full_backward_hook(self.backward_hook(module_name, model_name))
+                hook = module.register_full_backward_hook(self.backward_hook(module_name, model_name, True))
                 total_hook_list.append(hook) 
             if model_name == "smaller":
                 self.smaller_backward_hook_list = total_hook_list
@@ -639,6 +675,8 @@ class Distiller:
 
     
     def forward_loss(self, larger_model, smaller_model, larger_hook_forward_dict, smaller_hook_forward_dict):
+        # introduce into output hidden state
+
         #block-level now --> module-level --> matric weight level 
 
         # !!!!!! because dict is on cpu, so I need to move it to gpu !!!!!!!!!!!!!! Need to change to tensor
@@ -725,10 +763,22 @@ class Distiller:
 
             x, y = batch[:, :-1], batch[:, 1:]
             #output_large = self.larger_model.forward(x)
+
             larger_model_next_token_prediction_loss = self.larger_model.next_token_prediction_loss(x, y)
+            for n, p in self.larger_hook_forward_dict.items():
+                print(n, len(p)) 
+            
+            print("back")
             for n, p in self.larger_hook_backward_dict.items():
                 print(n, len(p)) 
             
+
+            # self.register_hook(self.smaller_model.model, "smaller", "backward")
+            # smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
+            # for n, p in self.smaller_hook_backward_dict.items():
+            #     print(n, len(p)) 
+            
+            print("Done")
             import pdb; pdb.set_trace()
             exit()
             

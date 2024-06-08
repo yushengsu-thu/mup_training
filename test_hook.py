@@ -180,21 +180,24 @@ backward_hooks = []
 
 # 假设我们有一个新的 tensor，用于替换 grad_input
 #new_grad_input_tensor = torch.randn(10)  # 示例 tensor
-def full_backward_hook_fn(module, grad_input, grad_output, is_before=True):
-    if is_before:
-        backward_hooks.append(grad_output)
-        # 将 new_grad_input_tensor 替换 grad_input
-        #modified_grad_input = (new_grad_input_tensor,) + grad_input[1:]
-        #print(module)
-        modified_grad_input = tuple()
-        for i in range(len(grad_input)):
-            modified_grad_input += (grad_input[i]*2, )
-        #print("New grad_input before backward:", modified_grad_input)
-        return modified_grad_input
-    else:
-        #return grad_output
-        backward_hooks.append(grad_output)
-        #pass
+def b_hook(is_before):
+    def full_backward_hook_fn(module, grad_input, grad_output, is_before=is_before):
+        if is_before:
+            backward_hooks.append(grad_output)
+            # 将 new_grad_input_tensor 替换 grad_input
+            #modified_grad_input = (new_grad_input_tensor,) + grad_input[1:]
+            #print(module)
+            modified_grad_input = tuple()
+            for i in range(len(grad_input)):
+                modified_grad_input += (grad_input[i]*2, )
+            #print("New grad_input before backward:", modified_grad_input)
+            return modified_grad_input
+        else:
+            #return grad_output
+            print("ok")
+            backward_hooks.append(grad_output)
+            #pass
+    return full_backward_hook_fn
 
 # 定义前向钩子函数
 def forward_hook_fn(module, input, output):
@@ -203,15 +206,21 @@ def forward_hook_fn(module, input, output):
 
 # 为模型的每一层注册前向钩子
 # forward_hooks = []
-for layer in model.children():
-    layer.register_forward_hook(forward_hook_fn)
+#for layer in model.children():
+for name, module in model.named_modules():
+    module.register_forward_hook(forward_hook_fn)
     #forward_hooks.append(hook)
 
 # 为模型的每一层注册后向钩子
 # backward_hooks = []
-for layer in model.children():
-    layer.register_full_backward_hook(full_backward_hook_fn)
+#for layer in model.children():
+#for layer in model.children():
+for name, module in model.named_modules():
+    #print(layer)
+    # layer.register_full_backward_hook(full_backward_hook_fn)
+    module.register_full_backward_hook(b_hook(False))
     #backward_hooks.append(hook)
+
 
 # for epoch in range(5):  # 简单的训练循环
 max_epoch = 5
