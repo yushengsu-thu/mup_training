@@ -16,6 +16,7 @@
 ###############
 
 import copy
+from pickletools import optimize
 from sympy import O
 import torch
 from torch import nn, optim
@@ -549,10 +550,15 @@ class Distiller:
     ## normal --> clear hook and then do the llm pre-training loss
     ## use the below caculate loss first. and then remove the hook to 
     def backward_hook(self, module_name, model_name, is_before):
+        print(f"inininininini line 552")
         if model_name == "smaller":
             #def b_hook(module, grad_input, grad_output, is_before=True):
             def s_b_hook(module, grad_input, grad_output, is_before=is_before):
                 if is_before:
+                    print(module_name)
+                    #print(self.larger_hook_backward_dict.keys())
+                    import pdb; pdb.set_trace()
+                    exit()
                     ######################
                     # new_grad_input_tensor = torch.randn(1, 10) 
                     # modified_grad_input = tuple([new_grad_input_tensor if g is not None else None for g in grad_input])
@@ -567,7 +573,17 @@ class Distiller:
                     # print(1111111111)
                     # exit()
                     #tensor(14.6016, device='cuda:0', dtype=torch.float16)
-                    self.smaller_hook_backward_dict[module_name] = grad_output ###
+                    # print(f"grad_input: {grad_input}")
+                    # print("------")
+                    # print(f"grad_output: {grad_output}")
+                    # if grad_input == None:
+                    #     print(f"grad_input is None")
+                    # if grad_output == None:
+                    #     print(f"grad_output is None")
+                    # print("=======")
+                    # exit()
+                    self.smaller_hook_backward_dict[module_name] = grad_output 
+
                     return grad_input
                 else:
                     self.smaller_hook_backward_dict[module_name] = grad_output
@@ -576,13 +592,9 @@ class Distiller:
             def l_b_hook(module, grad_input, grad_output, is_before=is_before):
                 if is_before:
                     self.larger_hook_backward_dict[module_name] = grad_output
-                    print(f"grad_input: {grad_input}")
-                    print(f"grad_output: {grad_output}")
                     return grad_input
                 else:
                     self.larger_hook_backward_dict[module_name] = grad_output
-                    print(f"grad_input: {grad_input}")
-                    print(f"grad_output: {grad_output}")
             return l_b_hook
         else:
             raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
@@ -611,7 +623,7 @@ class Distiller:
 
 
     # def register_hook(self, model, model_name="smaller", hook_type="forward"):
-    def register_hook(self, model, model_name, hook_type):
+    def register_hook(self, model, model_name, hook_type, is_modifiy):
         if hook_type == "forward":
             #for module_name, module in model.named_parameters():
             total_hook_list = []
@@ -747,8 +759,8 @@ class Distiller:
         loss_2 = 0
 
         #self.smaller_register_hook(self.smaller_model.model)
-        self.register_hook(self.larger_model.model, "larger", "forward")
-        self.register_hook(self.larger_model.model, "larger", "backward")
+        #self.register_hook(self.larger_model.model, "larger", "forward")
+        #self.register_hook(self.larger_model.model, "larger", "backward", False)
         
         #loss_1 --> forward pass: weight matrix
         #loss_2 --> backward pass: weight matrix
@@ -763,15 +775,67 @@ class Distiller:
 
             x, y = batch[:, :-1], batch[:, 1:]
             #output_large = self.larger_model.forward(x)
-
+            
+            ###
+            # collect normal larger's backward grad
+            self.register_hook(self.larger_model.model, "larger", "backward", False)
             larger_model_next_token_prediction_loss = self.larger_model.next_token_prediction_loss(x, y)
-            for n, p in self.larger_hook_forward_dict.items():
-                print(n, len(p)) 
+            larger_model_next_token_prediction_loss.backward()
+            self.remove_hook(self.smaller_forward_hook_list)
+
+            # smaller backward 
+            #self.register_hook(self.smaller_model.model, "smaller", "forward", None)
+            # collect smaller backward grad (with larger's downsampled grad)
+            self.register_hook(self.smaller_model.model, "smaller", "backward", True)
+            smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
+            smaller_model_next_token_prediction_loss.backward()
+            self.opt.zero_grad()
+            # collect normal smaller's backward grad
+            self.register_hook(self.smaller_model.model, "smaller", "backward", False)
+            smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
+            smaller_model_next_token_prediction_loss.backward()
+
             
-            print("back")
-            for n, p in self.larger_hook_backward_dict.items():
-                print(n, len(p)) 
+            # for (name_f, param_f), (name_p, param_p) in zip(self.smaller_hook_forward_dict.items(), self.smaller_hook_backward_dict.items()):
+            #     #print(name_f, len(param_f), len(param_p))
+            #     #print(name_f, )
+            #     list_ = []
+            #     if len(param_p) > 1:
+            #         for t in param_p: 
+            #             list_.append(t)
+                    
+            #         from collections import deque
+            #         list_ = deque(list_)
+            #         while len(list_) > 0:
+            #             node = list_.popleft()
+            #             if node != None and len(node) > 1:
+            #                 for t in node:
+            #                     list_.append(t)
+            #             else:
+            #                 if node == None:
+            #                     continue
+            #                 print(f"len(node): {len(node)}")
+            #                 print(f"type(node): {type(node)}")
+            #                 print(f"node.shape: {node.shape}")
+                    
+                    
+            ###
+
             
+            #for n, p in self.larger_hook_forward_dict.items():
+            #    print(n, len(p)) 
+            
+            # print("back")
+            # for n, p in self.smaller_hook_backward_dict.items():
+            #    print(n, len(p)) 
+
+            # print("clean")
+            # self.opt.zero_grad()
+            # for n, p in self.smaller_hook_backward_dict.items():
+            #    print(n, len(p)) 
+             
+            #iprint(f"self.larger_backward_hook_list address")
+            #print(self.larger_backward_hook_list) 
 
             # self.register_hook(self.smaller_model.model, "smaller", "backward")
             # smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
@@ -780,6 +844,7 @@ class Distiller:
             
             print("Done")
             import pdb; pdb.set_trace()
+            #exec(open('script.py').read())
             exit()
             
             #output_small = self.smaller_model.forward(batch)
@@ -807,10 +872,10 @@ class Distiller:
             print(self.smaller_hook_backward_dict)
 
             # if I want to remove hook in every module in self.smaller_model, how do I do?
-            for module_name, module in self.smaller_model.named_modules():
-                module.remove_forward_hook()
-                module.remove_backward_hook()
-            exit()
+            # for module_name, module in self.smaller_model.named_modules():
+            #     module.remove_forward_hook()
+            #     module.remove_backward_hook()
+            # exit()
             ##########
             
             
