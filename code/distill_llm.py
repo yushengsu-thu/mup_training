@@ -17,6 +17,7 @@
 
 import copy
 from pickletools import optimize
+from re import sub
 from sympy import O
 import torch
 from torch import nn, optim
@@ -205,6 +206,13 @@ def _subsample_embeddings_dimlast(matrix_original, matrix_target, reduction_fact
         indices = indices[:target_d1]
     #subsampled_matrix = matrix_original[:, :, indices]
     subsampled_matrix = matrix_original.index_select(dim=-1, index=indices)
+    # if subsampled_matrix.shape == matrix_target.shape:
+    #     pass
+    # else:
+    #     if torch.numel(subsampled_matrix.shape) == torch.numel(matrix_target.shape):
+    #         subsampled_matrix = subsampled_matrix.squeeze() 
+    #     else:
+    #         raise ValueError(f"Error file: distill_llm.py, Invalid number: line 215+-")
     return subsampled_matrix.data
 
 
@@ -354,6 +362,9 @@ class Distiller:
         #config = AutoConfig.from_pretrained('LLM360/CrystalCoder', trust_remote_code=True)
         #config.save_pretrained('../distill-crystalcoder-config')
 
+        #loss
+        self.smaller_backward_loss = 0
+        self.smaller_forward_loss = 0
 
         self.show_params(self.larger_model.model)
         self.show_params(self.smaller_model.model)
@@ -531,11 +542,16 @@ class Distiller:
         #print("ml:", mean_loss.shape)
         #print("kl:", kl_loss.shape)
         loss = mean_loss + kl_loss
-
         return loss
 
-
-    def forward_hook(self, module_name, model_name):
+    def caculate_loss(self, y_prime, y):
+        #loss += F.kl_div(y_prime.log(), y, reduction='batchmean')
+        loss = torch.nn.MSELoss()(y_prime, y)
+        print(loss)
+        # loss have no gredient: please add gredient!!!!!
+        return loss
+    
+    def forward_hook(self, module_name, model_name, is_loss):
         if model_name == "smaller":
             def f_hook(module, input, output):
                 self.smaller_hook_forward_dict[module_name] = output
@@ -549,86 +565,79 @@ class Distiller:
 
     ## normal --> clear hook and then do the llm pre-training loss
     ## use the below caculate loss first. and then remove the hook to 
-    def backward_hook(self, module_name, model_name, is_before):
-        print(f"inininininini line 552")
-        if model_name == "smaller":
-            #def b_hook(module, grad_input, grad_output, is_before=True):
-            def s_b_hook(module, grad_input, grad_output, is_before=is_before):
-                if is_before:
-                    print(module_name)
-                    #print(self.larger_hook_backward_dict.keys())
-                    import pdb; pdb.set_trace()
-                    exit()
-                    ######################
-                    # new_grad_input_tensor = torch.randn(1, 10) 
-                    # modified_grad_input = tuple([new_grad_input_tensor if g is not None else None for g in grad_input])
-                    # print("New grad_input before backward:", modified_grad_input)
-                    # return modified_grad_input
-                    ######################
-                    # downsampled_grad_input = _subsample_embeddings_dimlast(self.larger_hook_backward_dict[module_name], grad_input, self.smaller_model.reduction_factor) 
-                    # return downsampled_grad_input
-                    ######################
-                    # print(1111111111)
-                    # print(grad_input)
-                    # print(1111111111)
-                    # exit()
-                    #tensor(14.6016, device='cuda:0', dtype=torch.float16)
-                    # print(f"grad_input: {grad_input}")
-                    # print("------")
-                    # print(f"grad_output: {grad_output}")
-                    # if grad_input == None:
-                    #     print(f"grad_input is None")
-                    # if grad_output == None:
-                    #     print(f"grad_output is None")
-                    # print("=======")
-                    # exit()
-                    self.smaller_hook_backward_dict[module_name] = grad_output 
-
+    def backward_hook(self, module_name, model_name, is_before, is_loss):
+        # check save hook (output and input) logic
+        print("000000000000")
+        if is_loss:
+            print(111111111)
+            print(model_name)
+            if model_name == "smaller":
+                print(15151515151515)
+                def loss_hook(module, grad_input, grad_output, is_before=is_before):
+                    #print(len(grad_input))
+                    target_grad_input = self.smaller_hook_backward_dict[module_name]
+                    if grad_input[0] == None:
+                        print("2222222222")
+                        return grad_input
+                    if len(target_grad_input) == 1:
+                        print(33333333333)
+                        self.smaller_backward_loss += self.caculate_loss(grad_input, target_grad_input)
+                    else:
+                        print(4444444444444)
+                        temp_list = []
+                        for idx in range(0, len(target_grad_input)): 
+                            if target_grad_input[idx] == None:
+                                pass
+                            else:
+                                self.smaller_backward_loss += self.caculate_loss(grad_input[idx], target_grad_input[idx])
                     return grad_input
-                else:
-                    self.smaller_hook_backward_dict[module_name] = grad_output
-            return s_b_hook
-        elif model_name == "larger":
-            def l_b_hook(module, grad_input, grad_output, is_before=is_before):
-                if is_before:
-                    self.larger_hook_backward_dict[module_name] = grad_output
-                    return grad_input
-                else:
-                    self.larger_hook_backward_dict[module_name] = grad_output
-            return l_b_hook
+                return loss_hook
         else:
-            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
-    
-    
-
-    # def b_hook(self, module, grad_input, grad_output, is_before=True):
-    #     if is_before:
-    #         self.smaller_hook_backward_dict[module] = grad_output
-    #         return grad_input
-    #     else:
-    #         self.smaller_hook_backward_dict[module] = grad_output
-
-    
-    # def backward_hook(self, module_name, model_name):
-    #     if model_name == "smaller":
-    #         def b_hook(module, grad_input, grad_output):
-    #             self.smaller_hook_backward_dict[module_name] = grad_output
-    #         # return b_hook
-    #     elif model_name == "larger":
-    #         def b_hook(module, grad_input, grad_output):
-    #             self.larger_hook_backward_dict[module_name] = grad_output
-    #         # return b_hook
-    #     else:
-    #         raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
+            if "lm_head" in module_name or "attn.attn_dropout" in module_name:
+                is_before = False
+            if model_name == "smaller":
+                def s_b_hook(module, grad_input, grad_output, is_before=is_before):
+                    if is_before:
+                        self.smaller_hook_backward_dict[module_name] = grad_output 
+                        modified_grad_input = self.larger_hook_backward_dict[module_name]
+                        if grad_input[0] == None:
+                            return grad_input
+                        if len(modified_grad_input) == 1:
+                            modified_grad_input = (_subsample_embeddings_dimlast(modified_grad_input[0], grad_input[0], self.smaller_model.reduction_factor),)   
+                        else:
+                            temp_list = []
+                            for idx in range(0, len(modified_grad_input)): 
+                                if modified_grad_input[idx] == None:
+                                    temp_list.append(None)
+                                temp_list.append(_subsample_embeddings_dimlast(modified_grad_input[idx], grad_input[idx], self.smaller_model.reduction_factor)) 
+                            modified_grad_input = (temp_list)
+                        return modified_grad_input
+                    else:
+                        self.smaller_hook_backward_dict[module_name] = grad_output
+                        return grad_input
+                return s_b_hook
+            elif model_name == "larger":
+                def l_b_hook(module, grad_input, grad_output, is_before=is_before):
+                    if is_before:
+                        #self.larger_hook_backward_dict[module_name] = grad_output
+                        self.larger_hook_backward_dict[module_name] = grad_input
+                        return grad_input
+                    else:
+                        #self.larger_hook_backward_dict[module_name] = grad_output
+                        self.larger_hook_backward_dict[module_name] = grad_input
+                        return grad_input
+                return l_b_hook
+            else:
+                raise ValueError(f"Error file: distill_llm.py, Invalid number: line 504+-")
 
 
     # def register_hook(self, model, model_name="smaller", hook_type="forward"):
-    def register_hook(self, model, model_name, hook_type, is_modifiy):
+    def register_hook(self, model, model_name, hook_type, is_modifiy, is_loss):
         if hook_type == "forward":
             #for module_name, module in model.named_parameters():
             total_hook_list = []
             for module_name, module in model.named_modules():
-                hook = module.register_forward_hook(self.forward_hook(module_name, model_name))
+                hook = module.register_forward_hook(self.forward_hook(module_name, model_name, is_loss))
                 total_hook_list.append(hook)
             if model_name == "smaller":
                 self.smaller_forward_hook_list = total_hook_list
@@ -640,7 +649,7 @@ class Distiller:
             total_hook_list = []
             for module_name, module in model.named_modules():
                 #module.register_backward_hook(self.backward_hook(module_name, model_name))
-                hook = module.register_full_backward_hook(self.backward_hook(module_name, model_name, True))
+                hook = module.register_full_backward_hook(self.backward_hook(module_name, model_name, is_modifiy, is_loss))
                 total_hook_list.append(hook) 
             if model_name == "smaller":
                 self.smaller_backward_hook_list = total_hook_list
@@ -775,25 +784,28 @@ class Distiller:
 
             x, y = batch[:, :-1], batch[:, 1:]
             #output_large = self.larger_model.forward(x)
-            
-            ###
+           
+            ###Backward loss### 
             # collect normal larger's backward grad
-            self.register_hook(self.larger_model.model, "larger", "backward", False)
+            self.register_hook(self.larger_model.model, "larger", "backward", False, False)
             larger_model_next_token_prediction_loss = self.larger_model.next_token_prediction_loss(x, y)
             larger_model_next_token_prediction_loss.backward()
-            self.remove_hook(self.smaller_forward_hook_list)
-
-            # smaller backward 
-            #self.register_hook(self.smaller_model.model, "smaller", "forward", None)
-            # collect smaller backward grad (with larger's downsampled grad)
-            self.register_hook(self.smaller_model.model, "smaller", "backward", True)
+            # collect downsample backward grad (with larger's downsampled grad)
+            self.register_hook(self.smaller_model.model, "smaller", "backward", True, False)
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
             smaller_model_next_token_prediction_loss.backward()
             self.opt.zero_grad()
+            #self.remove_hook(self.larger_backward_hook_list)
             # collect normal smaller's backward grad
-            self.register_hook(self.smaller_model.model, "smaller", "backward", False)
+            self.register_hook(self.smaller_model.model, "smaller", "backward", False, True)
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
             smaller_model_next_token_prediction_loss.backward()
+
+            print(smaller_model_next_token_prediction_loss)
+            print(self.smaller_backward_loss)
+
+            import pdb; pdb.set_trace()
+            exit()
 
             
             # for (name_f, param_f), (name_p, param_p) in zip(self.smaller_hook_forward_dict.items(), self.smaller_hook_backward_dict.items()):
@@ -842,10 +854,10 @@ class Distiller:
             # for n, p in self.smaller_hook_backward_dict.items():
             #     print(n, len(p)) 
             
-            print("Done")
-            import pdb; pdb.set_trace()
+            #print("Done")
+            #import pdb; pdb.set_trace()
             #exec(open('script.py').read())
-            exit()
+            #exit()
             
             #output_small = self.smaller_model.forward(batch)
 
