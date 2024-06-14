@@ -575,21 +575,23 @@ class Distiller:
                 print(15151515151515)
                 def loss_hook(module, grad_input, grad_output, is_before=is_before):
                     #print(len(grad_input))
-                    target_grad_input = self.smaller_hook_backward_dict[module_name]
-                    if grad_input[0] == None:
+                    target_grad_output = self.smaller_hook_backward_dict[module_name]
+                    print(f"len(target_grad_output): {len(target_grad_output)}, len(grad_input): {len(grad_output)}")
+                    if grad_output[0] == None:
                         print("2222222222")
                         return grad_input
-                    if len(target_grad_input) == 1:
+                    if len(target_grad_output) == 1:
                         print(33333333333)
-                        self.smaller_backward_loss += self.caculate_loss(grad_input, target_grad_input)
+                        print(grad_output[0].shape, target_grad_output[0].shape)
+                        self.smaller_backward_loss += self.caculate_loss(grad_output[0], target_grad_output[0])
                     else:
                         print(4444444444444)
                         temp_list = []
-                        for idx in range(0, len(target_grad_input)): 
-                            if target_grad_input[idx] == None:
+                        for idx in range(0, len(target_grad_output)): 
+                            if target_grad_output[idx] == None:
                                 pass
                             else:
-                                self.smaller_backward_loss += self.caculate_loss(grad_input[idx], target_grad_input[idx])
+                                self.smaller_backward_loss += self.caculate_loss(grad_output[idx], target_grad_output[idx])
                     return grad_input
                 return loss_hook
         else:
@@ -795,10 +797,15 @@ class Distiller:
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
             smaller_model_next_token_prediction_loss.backward()
             self.opt.zero_grad()
-            #self.remove_hook(self.larger_backward_hook_list)
+            ##
+            #self.remove_hook(self.smaller_backward_hook_list)
+            ##
             # collect normal smaller's backward grad
             self.register_hook(self.smaller_model.model, "smaller", "backward", False, True)
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
+            #for i,j in self.smaller_hook_backward_dict.items():
+            #    if len(j) == 1:
+            #        print(i, j[0].shape)
             smaller_model_next_token_prediction_loss.backward()
 
             print(smaller_model_next_token_prediction_loss)
