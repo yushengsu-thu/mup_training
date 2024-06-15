@@ -16,6 +16,7 @@
 ###############
 
 import copy
+import imp
 from pickletools import optimize
 from re import sub
 from sympy import O
@@ -552,7 +553,7 @@ class Distiller:
         #print(y_prime==y)
         #print(f"==========================")
         loss = torch.nn.MSELoss()(y_prime, y)
-        print(loss)
+        #print(loss)
         # loss have no gredient: please add gredient!!!!!
         return loss
     
@@ -561,13 +562,29 @@ class Distiller:
             if model_name == "smaller":
                 def loss_hook(module, input, output):
                     #self.smaller_hook_forward_dict[module_name] = output
-                    target_input = self.smaller_hook_backward_dict[module_name]
+                    #target_input = self.smaller_hook_backward_dict[module_name]
+                    target_input = self.smaller_hook_forward_dict[module_name]
                     if input[0] == None:
+                        print(1111111111)
                         return output
                     if len(target_input) == 1:
-                        self.smaller_forwardward_loss += self.caculate_loss(input[0], target_input[0])
+                        print(222222222)
+                        print(type(input), type(target_input))
+                        #self.smaller_forward_loss += self.caculate_loss(input[0], target_input[0])
+                        self.smaller_forward_loss += self.caculate_loss(input, target_input)
                     else:
-                        temp_list = []
+                        # for idx in range(0, len(input)): 
+                        #     if modified_output[idx] == None:
+                        #         temp_list.append(None)
+                        #     elif len(modified_output[idx]) == 1 and isinstance(modified_output[idx], torch.Tensor): 
+                        #         temp_list.append(_subsample_embeddings_dimlast(modified_output[idx], output[idx], self.smaller_model.reduction_factor)) 
+                        #     elif len(modified_output[idx]) > 1 and isinstance(modified_output[idx], tuple):
+                        #         temp_list_inner = [] 
+                        #         for idxx in range(0, len(modified_output[idx])): 
+                        #             temp_list_inner.append(_subsample_embeddings_dimlast(modified_output[idx][idxx], output[idx][idxx], self.smaller_model.reduction_factor)) 
+                        #         temp_list.append(temp_list_inner)
+                        #         temp_list = tuple(temp_list)
+                        print(3333333)
                         for idx in range(0, len(target_input)): 
                             if target_input[idx] == None:
                                 pass
@@ -577,32 +594,74 @@ class Distiller:
                 return loss_hook
             else:
                 raise ValueError(f"Error file: distill_llm.py, Invalid number: line 578+-")
-            
         else: 
             if model_name == "smaller":
-                def f_hook(module, input, output):
+                def f_hook(module, input, output, is_before=is_before):
+                    #print(module_name)
+                    if ".wte" in module_name or ".attn.c_attn" in module_name or ".attn.attn_dropout" in module_name or ".mlp.c_fc2" in module_name or ".mlp.c_fc" in module_name or ".mlp.c_proj" in module_name or "transformer" == module_name or "lm_head" == module_name or "" == module_name: 
+                        is_before = False
                     if is_before:
+                        #print(1111111111)
                         self.smaller_hook_forward_dict[module_name] = input 
                         modified_output = self.larger_hook_forward_dict[module_name]
+                        #print(f"input: {len(input)}, output: {len(output)}, input_mod: {len(modified_output)}")
+                        #print(f"input: {len(input[0])}, output: {len(output[0])}, input_mod: {len(modified_output[0])}")
                         if input[0] == None:
+                            #print("222222222")
                             return output
                         if len(modified_output) == 1:
-                            modified_output = (_subsample_embeddings_dimlast(modified_output[0], output[0], self.smaller_model.reduction_factor),)   
+                            #print(3333333)
+                            #modified_output = (_subsample_embeddings_dimlast(modified_output[0], output[0], self.smaller_model.reduction_factor),)   
+                            modified_output = _subsample_embeddings_dimlast(modified_output, output, self.smaller_model.reduction_factor)   
+                            #print(modified_output.shape, output.shape)
+                            #modified_output = output
                         else:
+                            '''
+                            output: len == 2, 
+                            - (1) <class 'torch.Tensor'> 
+                            - (2) <class 'tuple'>: (<class 'torch.Tensor'>, <class 'torch.Tensor'>)
+                            
+                            
+                            '''
+                            #print(44444444)
+                            #print(len(modified_output), len(output))
                             temp_list = []
+                            # print(modified_output)
+                            # import pdb; pdb.set_trace()
                             for idx in range(0, len(modified_output)): 
+                                #print("aaaaaaaa")
+                                #print(type(modified_output[idx]))
                                 if modified_output[idx] == None:
+                                    #print("bbbbbbbb")
                                     temp_list.append(None)
-                                temp_list.append(_subsample_embeddings_dimlast(modified_output[idx], output[idx], self.smaller_model.reduction_factor)) 
+                                elif len(modified_output[idx]) == 1 and isinstance(modified_output[idx], torch.Tensor): 
+                                    #print("cccccccc")
+                                    temp_list.append(_subsample_embeddings_dimlast(modified_output[idx], output[idx], self.smaller_model.reduction_factor)) 
+                                elif len(modified_output[idx]) > 1 and isinstance(modified_output[idx], tuple):
+                                    #print("dddddddd")
+                                    temp_list_inner = [] 
+                                    for idxx in range(0, len(modified_output[idx])): 
+                                        #print("eeeeeeee")
+                                        #print(type(modified_output[idx][idxx]))
+                                        temp_list_inner.append(_subsample_embeddings_dimlast(modified_output[idx][idxx], output[idx][idxx], self.smaller_model.reduction_factor)) 
+                                    temp_list.append(temp_list_inner)
+                                    temp_list = tuple(temp_list)
+                            #modified_output = (temp_list, )
                             modified_output = (temp_list)
+                            # import pdb; pdb.set_trace()
+                            #print(type(modified_output), type(output))
+                            #print(len(modified_output), len(output))
+                            #import pdb; pdb.set_trace()
                         return modified_output
                     else:    
+                        #print("++++++++++++")
                         self.smaller_hook_forward_dict[module_name] = input 
                         return output 
                 return f_hook
             
             elif model_name == "larger":
                 def f_hook(module, input, output):
+                    #print(f"++++  {module_name}, {type(input)}:{len(input)}, {type(output)}:{len(output)}")
                     self.larger_hook_forward_dict[module_name] = output
                 return f_hook
             else:
@@ -704,6 +763,7 @@ class Distiller:
     def remove_hook(self, hook_list):
         for hook in hook_list:
             hook.remove()
+        hook_list.clear()
 
     def check_for_hooks(self, model):
         has_hooks = False
@@ -837,7 +897,6 @@ class Distiller:
             smaller_model_next_token_prediction_loss.backward()
             self.smaller_hook_backward_dict.clear()
             self.remove_hook(self.smaller_backward_hook_list)
-
             #loss = smaller_model_next_token_prediction_loss + self.smaller_backward_loss
 
             #### above already confirmed #####
@@ -848,8 +907,9 @@ class Distiller:
             larger_model_hidden_state = self.larger_model.forward(x)
             # collect downsample forwardward grad (with larger's downsampled)
             self.register_hook(self.smaller_model.model, "smaller", "forward", True, False)
-            smaller_model_hidden_state = self.smaller_model.fordward(x)
+            smaller_model_hidden_state = self.smaller_model.forward(x)
             self.larger_hook_forward_dict.clear()
+            self.remove_hook(self.larger_forward_hook_list)
             self.remove_hook(self.smaller_forward_hook_list)
             # collect normal smaller's backward grad and get the next_token_prediction_loss
             self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
@@ -857,6 +917,7 @@ class Distiller:
             smaller_model_next_token_prediction_loss.backward()
             self.smaller_hook_backward_dict.clear()
             self.remove_hook(self.smaller_forward_hook_list)
+            #loss = self.smaller_forward_loss
             
             import pdb; pdb.set_trace() 
             exit()
