@@ -15,6 +15,7 @@
 ##to: lm_logits = lm_logits * torch.tensor(float(self.output_logits_scale), dtype=lm_logits.dtype, device=lm_logits.device
 ###############
 
+from ast import mod
 import copy
 import imp
 from pickletools import optimize
@@ -363,7 +364,6 @@ class Distiller:
         #config = AutoConfig.from_pretrained('LLM360/CrystalCoder', trust_remote_code=True)
         #config.save_pretrained('../distill-crystalcoder-config')
 
-
         #loss
         self.smaller_backward_loss = 0
         self.smaller_forward_loss = 0
@@ -515,7 +515,7 @@ class Distiller:
         kl_div = kl_divergence(dist_large, dist_small).mean(dim=(1, 2, 3)).sum()
         return kl_div
 
-    def loss_layer(self, output_large, output_small):
+    def layerwise_hidden_loss(self, output_large, output_small):
 
         '''
         # Logit loss
@@ -547,32 +547,42 @@ class Distiller:
         return loss
 
     def caculate_loss(self, y_prime, y):
+        #print("-----")
+        #print(y_prime.dtype, y.dtype)
+        #print(y_prime, y)
+        #print("-----")
         #loss += F.kl_div(y_prime.log(), y, reduction='batchmean')
         #print(f"==========================")
         #print(y_prime, y)
         #print(y_prime==y)
         #print(f"==========================")
         loss = torch.nn.MSELoss()(y_prime, y)
+        print(loss)
         #print(loss)
         # loss have no gredient: please add gredient!!!!!
         return loss
     
     def forward_hook(self, module_name, model_name, is_before, is_loss):
         if is_loss:
+            #print(module_name)
             if model_name == "smaller":
                 def loss_hook(module, input, output):
-                    #self.smaller_hook_forward_dict[module_name] = output
-                    #target_input = self.smaller_hook_backward_dict[module_name]
                     target_input = self.smaller_hook_forward_dict[module_name]
-                    if input[0] == None:
-                        print(1111111111)
-                        return output
-                    if len(target_input) == 1:
-                        print(222222222)
-                        print(type(input), type(target_input))
-                        #self.smaller_forward_loss += self.caculate_loss(input[0], target_input[0])
-                        self.smaller_forward_loss += self.caculate_loss(input, target_input)
+                    if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
+                        pass
+                    elif len(target_input) == 1:
+                        try:
+                            self.smaller_forward_loss += self.caculate_loss(input[0], target_input[0])
+                        except:
+                            print("!!!!!!!!!!!!Bug!!!!!!!!!!!!!!!")
+                            print(f"module: {module_name}")
+                            print(input[0].dtype, target_input[0].dtype)
+                            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 594+-")
                     else:
+                        #print(333333)
+                        #print(module_name)
+                        #print(len(input), len(target_input))
                         # for idx in range(0, len(input)): 
                         #     if modified_output[idx] == None:
                         #         temp_list.append(None)
@@ -584,12 +594,26 @@ class Distiller:
                         #             temp_list_inner.append(_subsample_embeddings_dimlast(modified_output[idx][idxx], output[idx][idxx], self.smaller_model.reduction_factor)) 
                         #         temp_list.append(temp_list_inner)
                         #         temp_list = tuple(temp_list)
-                        print(3333333)
+                       
+                        #import pdb; pdb.set_trace()
+
+                        #exit()
                         for idx in range(0, len(target_input)): 
                             if target_input[idx] == None:
                                 pass
-                            else:
+                            elif len(target_input[idx]) == 1:
+                                #try:
                                 self.smaller_forward_loss += self.caculate_loss(input[idx], target_input[idx])
+                                #except:
+                                #    print(input[idx].dtype, target_input[idx].dtype)
+                                #    raise ValueError(f"Error file: distill_llm.py, Invalid number: line 604+-")
+                            else:
+                                for idxx in range(0, len(target_input[idx])):
+                                    #try:
+                                    self.smaller_forward_loss += self.caculate_loss(input[idx][idxx], target_input[idx][idxx])
+                                    #except:
+                                    #    print(input[idx][idxx].dtype, target_input[idx][idxx].dtype)
+                                    #    raise ValueError(f"Error file: distill_llm.py, Invalid number: line 604+-")
                     return output 
                 return loss_hook
             else:
@@ -601,67 +625,39 @@ class Distiller:
                     if ".wte" in module_name or ".attn.c_attn" in module_name or ".attn.attn_dropout" in module_name or ".mlp.c_fc2" in module_name or ".mlp.c_fc" in module_name or ".mlp.c_proj" in module_name or "transformer" == module_name or "lm_head" == module_name or "" == module_name: 
                         is_before = False
                     if is_before:
-                        #print(1111111111)
                         self.smaller_hook_forward_dict[module_name] = input 
                         modified_output = self.larger_hook_forward_dict[module_name]
-                        #print(f"input: {len(input)}, output: {len(output)}, input_mod: {len(modified_output)}")
-                        #print(f"input: {len(input[0])}, output: {len(output[0])}, input_mod: {len(modified_output[0])}")
                         if input[0] == None:
-                            #print("222222222")
                             return output
                         if len(modified_output) == 1:
-                            #print(3333333)
-                            #modified_output = (_subsample_embeddings_dimlast(modified_output[0], output[0], self.smaller_model.reduction_factor),)   
                             modified_output = _subsample_embeddings_dimlast(modified_output, output, self.smaller_model.reduction_factor)   
-                            #print(modified_output.shape, output.shape)
-                            #modified_output = output
                         else:
                             '''
                             output: len == 2, 
                             - (1) <class 'torch.Tensor'> 
                             - (2) <class 'tuple'>: (<class 'torch.Tensor'>, <class 'torch.Tensor'>)
-                            
-                            
                             '''
-                            #print(44444444)
-                            #print(len(modified_output), len(output))
                             temp_list = []
-                            # print(modified_output)
-                            # import pdb; pdb.set_trace()
                             for idx in range(0, len(modified_output)): 
-                                #print("aaaaaaaa")
-                                #print(type(modified_output[idx]))
                                 if modified_output[idx] == None:
-                                    #print("bbbbbbbb")
                                     temp_list.append(None)
                                 elif len(modified_output[idx]) == 1 and isinstance(modified_output[idx], torch.Tensor): 
-                                    #print("cccccccc")
                                     temp_list.append(_subsample_embeddings_dimlast(modified_output[idx], output[idx], self.smaller_model.reduction_factor)) 
                                 elif len(modified_output[idx]) > 1 and isinstance(modified_output[idx], tuple):
-                                    #print("dddddddd")
                                     temp_list_inner = [] 
                                     for idxx in range(0, len(modified_output[idx])): 
-                                        #print("eeeeeeee")
-                                        #print(type(modified_output[idx][idxx]))
                                         temp_list_inner.append(_subsample_embeddings_dimlast(modified_output[idx][idxx], output[idx][idxx], self.smaller_model.reduction_factor)) 
                                     temp_list.append(temp_list_inner)
                                     temp_list = tuple(temp_list)
-                            #modified_output = (temp_list, )
                             modified_output = (temp_list)
-                            # import pdb; pdb.set_trace()
-                            #print(type(modified_output), type(output))
-                            #print(len(modified_output), len(output))
-                            #import pdb; pdb.set_trace()
                         return modified_output
                     else:    
-                        #print("++++++++++++")
                         self.smaller_hook_forward_dict[module_name] = input 
                         return output 
                 return f_hook
             
             elif model_name == "larger":
                 def f_hook(module, input, output):
-                    #print(f"++++  {module_name}, {type(input)}:{len(input)}, {type(output)}:{len(output)}")
                     self.larger_hook_forward_dict[module_name] = output
                 return f_hook
             else:
@@ -674,14 +670,15 @@ class Distiller:
         if is_loss:
             if model_name == "smaller":
                 def loss_hook(module, grad_input, grad_output, is_before=is_before):
-                    #print(module_name)
-                    #print(len(grad_input))
+                    print(module)
+                    print(f"grad_input: {grad_input}, grad_output: {grad_output}")
+                    import pdb; pdb.set_trace()
+                    
+                    
                     target_grad_output = self.smaller_hook_backward_dict[module_name]
-                    #print(f"len(target_grad_output): {len(target_grad_output)}, len(grad_input): {len(grad_output)}")
                     if grad_output[0] == None:
                         return grad_input
                     if len(target_grad_output) == 1:
-                        #print(grad_output[0].shape, target_grad_output[0].shape)
                         self.smaller_backward_loss += self.caculate_loss(grad_output[0], target_grad_output[0])
                     else:
                         temp_list = []
@@ -781,35 +778,38 @@ class Distiller:
             print("No hooks found in any module of the model.")
 
 
-    def loss_hidden(self, output_large, output_small):
-        ############
-        large_hidden_states = output_large.hidden_states
-        large_hidden_states = torch.stack(large_hidden_states)
-        small_hidden_states = output_small.hidden_states
-        small_hidden_states = torch.stack(small_hidden_states)
+    # def hidden_layer_loss(self, output_large, output_small):
+    #     large_hidden_states = output_large.hidden_states
+    #     large_hidden_states = torch.stack(large_hidden_states)
+    #     small_hidden_states = output_small.hidden_states
+    #     small_hidden_states = torch.stack(small_hidden_states)
 
+    #     mean_loss = self.compute_mean_loss(large_hidden_states, small_hidden_states)
+    #     kl_loss = self.compute_kl_divergence_distance(large_hidden_states, small_hidden_states)
+    #     loss = mean_loss + kl_loss
+    #     return loss
     
-    def forward_loss(self, larger_model, smaller_model, larger_hook_forward_dict, smaller_hook_forward_dict):
-        # introduce into output hidden state
+    # def forward_loss(self, larger_model, smaller_model, larger_hook_forward_dict, smaller_hook_forward_dict):
+    #     # introduce into output hidden state
 
-        #block-level now --> module-level --> matric weight level 
+    #     #block-level now --> module-level --> matric weight level 
 
-        # !!!!!! because dict is on cpu, so I need to move it to gpu !!!!!!!!!!!!!! Need to change to tensor
-        # Create downsample x: Downsample larger_model hidden_state * W^T_(smaller_model) to get x 
-        loss = 0
-        for layer in range(len(self.smaller_model.model.transformer.h)):
-            if layer == 0:
-                downsampled_x = _subsample_embeddings_dimlast(larger_hook_forward_dict['transformer.wte'], smaller_hook_forward_dict['transformer.wte'], self.smaller_model.reduction_factor)
-                y_prime = smaller_model.model.transformer.h[layer](downsampled_x)[0]
-                y = smaller_hook_forward_dict[f"transformer.h.{layer}"][0]
-            else:  
-                downsampled_x = _subsample_embeddings_dimlast(larger_hook_forward_dict[f"transformer.h.{layer-1}"][0], smaller_hook_forward_dict[f"transformer.h.{layer-1}"][0], self.smaller_model.reduction_factor)
-                y_prime = smaller_model.model.transformer.h[layer](downsampled_x)[0]
-                y = smaller_hook_forward_dict[f"transformer.h.{layer}"][0]
-            #loss += F.kl_div(y_prime.log(), y, reduction='batchmean')
-            loss += torch.nn.MSELoss()(y_prime, y)
-        # loss have no gredient: please add gredient!!!!!
-        return loss
+    #     # !!!!!! because dict is on cpu, so I need to move it to gpu !!!!!!!!!!!!!! Need to change to tensor
+    #     # Create downsample x: Downsample larger_model hidden_state * W^T_(smaller_model) to get x 
+    #     loss = 0
+    #     for layer in range(len(self.smaller_model.model.transformer.h)):
+    #         if layer == 0:
+    #             downsampled_x = _subsample_embeddings_dimlast(larger_hook_forward_dict['transformer.wte'], smaller_hook_forward_dict['transformer.wte'], self.smaller_model.reduction_factor)
+    #             y_prime = smaller_model.model.transformer.h[layer](downsampled_x)[0]
+    #             y = smaller_hook_forward_dict[f"transformer.h.{layer}"][0]
+    #         else:  
+    #             downsampled_x = _subsample_embeddings_dimlast(larger_hook_forward_dict[f"transformer.h.{layer-1}"][0], smaller_hook_forward_dict[f"transformer.h.{layer-1}"][0], self.smaller_model.reduction_factor)
+    #             y_prime = smaller_model.model.transformer.h[layer](downsampled_x)[0]
+    #             y = smaller_hook_forward_dict[f"transformer.h.{layer}"][0]
+    #         #loss += F.kl_div(y_prime.log(), y, reduction='batchmean')
+    #         loss += torch.nn.MSELoss()(y_prime, y)
+    #     # loss have no gredient: please add gredient!!!!!
+    #     return loss
         
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
@@ -868,7 +868,11 @@ class Distiller:
         #loss_1 --> forward pass: weight matrix
         #loss_2 --> backward pass: weight matrix
         #loss_3 --> hidden state difference
+        total_loss = 0
         for i, batch in enumerate(prog):
+            loss = 0
+            self.smaller_backward_loss = 0
+            self.smaller_forward_loss = 0
             
             self.opt.zero_grad()
 
@@ -883,21 +887,36 @@ class Distiller:
             # collect normal larger's backward grad
             self.register_hook(self.larger_model.model, "larger", "backward", False, False)
             larger_model_next_token_prediction_loss = self.larger_model.next_token_prediction_loss(x, y)
-            larger_model_next_token_prediction_loss.backward()
+            #larger_model_next_token_prediction_loss.backward()
+            self.accelerator.backward(larger_model_next_token_prediction_loss)
             # collect downsample backward grad (with larger's downsampled grad)
             self.register_hook(self.smaller_model.model, "smaller", "backward", True, False)
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
-            smaller_model_next_token_prediction_loss.backward()
+            #smaller_model_next_token_prediction_loss.backward()
+            self.accelerator.backward(smaller_model_next_token_prediction_loss)
             self.opt.zero_grad()
+            del smaller_model_next_token_prediction_loss
             self.larger_hook_backward_dict.clear()
             self.remove_hook(self.smaller_backward_hook_list)
             # collect normal smaller's backward grad and get the next_token_prediction_loss
             self.register_hook(self.smaller_model.model, "smaller", "backward", False, True)
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
-            smaller_model_next_token_prediction_loss.backward()
+            #smaller_model_next_token_prediction_loss.backward()
+            print("++++++++++++++++")
+            print("++++++++++++++++")
+            print("++++++++++++++++")
+            self.accelerator.backward(smaller_model_next_token_prediction_loss)
             self.smaller_hook_backward_dict.clear()
             self.remove_hook(self.smaller_backward_hook_list)
-            #loss = smaller_model_next_token_prediction_loss + self.smaller_backward_loss
+             
+            import pdb; pdb.set_trace()
+
+            
+            self.accelerator.backward(self.smaller_backward_loss)
+            loss += smaller_model_next_token_prediction_loss + self.smaller_backward_loss
+
+            import pdb; pdb.set_trace()
+            exit()
 
             #### above already confirmed #####
 
@@ -915,13 +934,16 @@ class Distiller:
             self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
             smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
             smaller_model_next_token_prediction_loss.backward()
-            self.smaller_hook_backward_dict.clear()
+            self.smaller_hook_forward_dict.clear()
             self.remove_hook(self.smaller_forward_hook_list)
-            #loss = self.smaller_forward_loss
+            loss += self.smaller_forward_loss
             
-            import pdb; pdb.set_trace() 
-            exit()
-
+            #logits loss
+            loss += self.caculate_loss(larger_model_hidden_state.logits, smaller_model_hidden_state.logits)
+            
+            # layer-wise distribution loss 
+            loss += self.layerwise_hidden_loss(larger_model_hidden_state, smaller_model_hidden_state)
+            
             
             
             
@@ -990,7 +1012,7 @@ class Distiller:
             # exit()
             
             # step1: backward_loss
-            smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
+            #smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
             # self.register_hook(self.smaller_model.model, "smaller", "backward")
             # self.register_hook(self.smaller_model.model, "smaller", "forward")
             # self.check_for_hooks(self.smaller_model.model)
@@ -1001,8 +1023,8 @@ class Distiller:
 
 
 
-            output_small = self.smaller_model.forward(batch)
-            print(self.smaller_hook_backward_dict)
+            #output_small = self.smaller_model.forward(batch)
+            #print(self.smaller_hook_backward_dict)
 
             # if I want to remove hook in every module in self.smaller_model, how do I do?
             # for module_name, module in self.smaller_model.named_modules():
@@ -1012,25 +1034,26 @@ class Distiller:
             ##########
             
             
-            # step1: forward_loss #[issue: need to use the caculate loss/gredient to update the self.smaller_model: it fails now]
-            output_small = self.smaller_model.forward(batch)
-            forward_loss = self.forward_loss(self.larger_model, self.smaller_model, self.larger_hook_forward_dict, self.smaller_hook_forward_dict)
+            # # step1: forward_loss #[issue: need to use the caculate loss/gredient to update the self.smaller_model: it fails now]
+            # output_small = self.smaller_model.forward(batch)
+            # forward_loss = self.forward_loss(self.larger_model, self.smaller_model, self.larger_hook_forward_dict, self.smaller_hook_forward_dict)
             
-            # step2:
+            # # step2:
 
-            # step3:
-            #loss_1 = self.loss_hidden(output_large, output_small)
+            # # step3:
+            # #loss_1 = self.loss_hidden(output_large, output_small)
 
-            # total:
-            #loss = loss_1
-            loss = forward_loss
+            # # total:
+            # #loss = loss_1
+            # loss = forward_loss
 
-            stop_batch=10
-            print(loss)
+            # stop_batch=10
+            # print(loss)
             
             #accumulated_loss += loss_2.item()
-            #total_loss += loss_2.item()
+            total_loss += loss.item()
             prog.set_description(f"loss: {loss.item():.3f}")
+            prog.set_description(f"total_loss: {total_loss/self.step:.3f}")
             '''
             wandb.log(
                 {
@@ -1040,7 +1063,8 @@ class Distiller:
             )
             '''
 
-            self.accelerator.backward(loss)
+            #### Do not deelete
+            #self.accelerator.backward(loss) #???????
 
             '''
             ####################
@@ -1057,19 +1081,19 @@ class Distiller:
 
             self.opt.step()
 
-            # clean self.larger_model gredient
-            with torch.no_grad():
-                self.larger_model.model.zero_grad()
+            # # clean self.larger_model gredient
+            # with torch.no_grad():
+            #     self.larger_model.model.zero_grad()
             
             # Clean hook:
-            self.larger_hook_forward_dict.clear()
-            self.larger_hook_backward_dict.clear()
-            self.smaller_hook_forward_dict.clear()
-            self.smaller_hook_backward_dict.clear()
+            # self.larger_hook_forward_dict.clear()
+            # self.larger_hook_backward_dict.clear()
+            # self.smaller_hook_forward_dict.clear()
+            # self.smaller_hook_backward_dict.clear()
             
             # Register hook:
-            self.smaller_register_hook(self.smaller_model.model)
-            self.larger_register_hook(self.larger_model.model)
+            # self.smaller_register_hook(self.smaller_model.model)
+            # self.larger_register_hook(self.larger_model.model)
 
             continue
 

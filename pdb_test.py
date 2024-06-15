@@ -6,43 +6,22 @@ print("\n")
 print(f"==Test==")
 print("\n")
 
-print("!!!!!")
-print(len(output), len(modified_output))
-print("!!!!!")
-#exit()
 
-for idx in range(0, len(output)):
-    if len(output[idx]) == 1:
-        print(1111)
-        print(output[idx].shape)
+for idx in range(0, len(target_input)): 
+    if len(target_input[idx]) == 1:
+        print(111111)
+        print(type(target_input[idx]), target_input[idx].shape)
     else:
-        print(2222)
-        print(len(output[idx]), type(output[idx]))
-        for idxx in range(0, len(output[idx])):
-            if len(output[idx][idxx]) == 1:
-                print(3333)
-                print(output[idx][idxx].shape)
-            else:
-                print(44444)
-                for idxxx in range(0, len(output[idxx])):
-                    print(output[idx][idxx][idxxx].shape)
-
-print("==============")
-
-for idx in range(0, len(modified_output)):
-    if len(modified_output[idx]) == 1:
-        print(1111)
-        print(modified_output[idx].shape)
+        print(222222222)
+        for i in range(0, len(target_input[idx])):
+            print(type(target_input[idx][i]), target_input[idx][i].shape)
+print("===================")
+for idx in range(0, len(input)): 
+    if len(input[idx]) == 1:
+        print(111111)
+        print(type(input[idx]), input[idx].shape)
     else:
-        print(2222)
-        print(len(modified_output[idx]), type(modified_output[idx]))
-        for idxx in range(0, len(modified_output[idx])):
-            if len(modified_output[idx][idxx]) == 1:
-                print(3333)
-                print(modified_output[idx][idxx].shape)
-            else:
-                print(44444)
-                for idxxx in range(0, len(modified_output[idxx])):
-                    print(modified_output[idx][idxx][idxxx].shape)
-
+        print(222222222)
+        for i in range(0, len(input[idx])):
+            print(type(input[idx][i]), input[idx][i].shape)
 
