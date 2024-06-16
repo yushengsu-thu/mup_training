@@ -168,7 +168,7 @@ optimizer = optim.SGD(model.parameters(), lr=0.01)
 criterion = nn.MSELoss()
 
 # 模拟一些训练数据
-inputs = torch.randn(5, 10, requires_grad=True)
+inputs = torch.randn(5, 10)
 targets = torch.randn(5, 1)
 
 # 用于记录前向传播值的字典
@@ -182,6 +182,8 @@ backward_hooks = []
 #new_grad_input_tensor = torch.randn(10)  # 示例 tensor
 def b_hook(is_before):
     def full_backward_hook_fn(module, grad_input, grad_output, is_before=is_before):
+        print(f"grad_input: {grad_input}")
+        print(f"grad_output: {grad_output}")
         if is_before:
             backward_hooks.append(grad_output)
             # 将 new_grad_input_tensor 替换 grad_input
@@ -194,8 +196,9 @@ def b_hook(is_before):
             return modified_grad_input
         else:
             #return grad_output
-            print("ok")
+            #print("ok")
             backward_hooks.append(grad_output)
+            return grad_input
             #pass
     return full_backward_hook_fn
 
@@ -282,8 +285,8 @@ for input, target in zip(inputs, targets):
 
 
 
-print(backward_hooks)
-exit()
+# print(backward_hooks)
+# exit()
 
 # # 打印前向传播值
 # print("Forward pass values with hook modification:")
