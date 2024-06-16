@@ -577,14 +577,15 @@ class Distiller:
 
     def caculate_loss(self, y_prime, y):
         #threshold = 256
-        #threshold = 10
+        threshold = 10
         #print(y_prime, y)
         loss = nn.MSELoss()(y_prime, y)
         print(loss)
-        print("------")
         if torch.isinf(loss):
             print("Loss is inf. Handling special case.")
-            loss = torch.tensor(0.0, requires_grad=True)
+            loss = torch.tensor(threshold, requires_grad=True)
+            print(f"loss set as: {threshold}")
+        print("------")
         # if loss.item() > 100:
         #     raise ValueError(f"Error file: distill_llm.py, Invalid number: line 584+-")
         return loss
