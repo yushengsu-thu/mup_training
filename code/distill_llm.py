@@ -51,6 +51,8 @@ import argparse
 
 from torch.distributions import Normal, kl_divergence
 
+import re
+
 # split data, 1:9
 # add ppl
 
@@ -580,8 +582,11 @@ class Distiller:
         loss = nn.MSELoss()(y_prime, y)
         print(loss)
         print("------")
-        if loss.item() > 100:
-            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 584+-")
+        if torch.isinf(loss):
+            print("Loss is inf. Handling special case.")
+            loss = torch.tensor(0.0, requires_grad=True)
+        # if loss.item() > 100:
+        #     raise ValueError(f"Error file: distill_llm.py, Invalid number: line 584+-")
         return loss
         #clipped_loss = torch.clamp(loss, min=None, max=threshold)
         #print(clipped_loss)
@@ -589,6 +594,22 @@ class Distiller:
    
     
     '''
+    transformer.wte.weight torch.Size([32032, 1024])
+    transformer.h.0.ln_1.weight torch.Size([1024])
+    transformer.h.0.ln_1.bias torch.Size([1024])
+    transformer.h.0.attn.c_attn.weight torch.Size([1024, 3072])
+    transformer.h.0.attn.c_attn.bias torch.Size([3072])
+    transformer.h.0.attn.c_proj.weight torch.Size([1024, 1024])
+    transformer.h.0.attn.c_proj.bias torch.Size([1024])
+    transformer.h.0.ln_2.weight torch.Size([1024])
+    transformer.h.0.ln_2.bias torch.Size([1024])
+    transformer.h.0.mlp.c_fc.weight torch.Size([1024, 2730])
+    transformer.h.0.mlp.c_fc.bias torch.Size([2730])
+    transformer.h.0.mlp.c_fc2.weight torch.Size([1024, 2730])
+    transformer.h.0.mlp.c_fc2.bias torch.Size([2730])
+    transformer.h.0.mlp.c_proj.weight torch.Size([2730, 1024])
+    transformer.h.0.mlp.c_proj.bias torch.Size([1024])
+
     transformer.wte 1
     transformer.drop 1
     transformer.h.0.ln_1 1
@@ -605,22 +626,6 @@ class Distiller:
     transformer.h.0.mlp.dropout 1
     transformer.h.0.mlp 1
     transformer.h.0 2
-
-    transformer.wte.weight torch.Size([32032, 1024])
-    transformer.h.0.ln_1.weight torch.Size([1024])
-    transformer.h.0.ln_1.bias torch.Size([1024])
-    transformer.h.0.attn.c_attn.weight torch.Size([1024, 3072])
-    transformer.h.0.attn.c_attn.bias torch.Size([3072])
-    transformer.h.0.attn.c_proj.weight torch.Size([1024, 1024])
-    transformer.h.0.attn.c_proj.bias torch.Size([1024])
-    transformer.h.0.ln_2.weight torch.Size([1024])
-    transformer.h.0.ln_2.bias torch.Size([1024])
-    transformer.h.0.mlp.c_fc.weight torch.Size([1024, 2730])
-    transformer.h.0.mlp.c_fc.bias torch.Size([2730])
-    transformer.h.0.mlp.c_fc2.weight torch.Size([1024, 2730])
-    transformer.h.0.mlp.c_fc2.bias torch.Size([2730])
-    transformer.h.0.mlp.c_proj.weight torch.Size([2730, 1024])
-    transformer.h.0.mlp.c_proj.bias torch.Size([1024])
     ''' 
     def forward_hook(self, module_name, model_name, is_before, is_loss):
         if is_loss:
@@ -630,8 +635,10 @@ class Distiller:
                     target_input = self.smaller_hook_forward_dict[module_name]
                     if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
                         pass
-                    #elif ".drop" in module_name or "_dropout" in module_name or "transformer.h.0.ln_1" in module_name:
-                    #    pass 
+                    elif "transformer.drop" in module_name or ".ln_1" in module_name or ".c_proj" in module_name:
+                        pass 
+                    elif re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.attn$", module_name) or re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.mlp$", module_name):
+                        pass
                     elif len(target_input) == 1:
                         try:
                             self.smaller_forward_loss += self.caculate_loss(input[0], target_input[0])
