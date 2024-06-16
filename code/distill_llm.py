@@ -23,6 +23,7 @@ import copy
 import imp
 from pickletools import optimize
 from re import sub
+from xml.etree.ElementTree import TreeBuilder
 from sympy import O
 import torch
 from torch import nn, optim, threshold
@@ -121,9 +122,9 @@ class LargerModel:
             cache_dir = self.cache_dir,
             trust_remote_code=True
         )
-    def forward(self, x):
+    def forward(self, x, output_hidden_states):
         x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=True)
+        z = self.model(x, output_hidden_states=output_hidden_states)
         return z
     def next_token_prediction_loss(self, x, y):
         z = self.model(x).logits
@@ -310,9 +311,9 @@ class SmallerModel:
         
         del model_original
 
-    def forward(self, x):
+    def forward(self, x, output_hidden_states):
         x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=True)
+        z = self.model(x, output_hidden_states=output_hidden_states)
         return z
 
     def next_token_prediction_loss(self, x, y):
@@ -574,12 +575,13 @@ class Distiller:
 
     def caculate_loss(self, y_prime, y):
         #threshold = 256
-        threshold = 10
+        #threshold = 10
+        print(y_prime, y)
         loss = nn.MSELoss()(y_prime, y)
-        #return loss
-        clipped_loss = torch.clamp(loss, min=None, max=threshold)
+        return loss
+        #clipped_loss = torch.clamp(loss, min=None, max=threshold)
         #print(clipped_loss)
-        return clipped_loss
+        #return clipped_loss
     
     def forward_hook(self, module_name, model_name, is_before, is_loss):
         if is_loss:
@@ -589,13 +591,11 @@ class Distiller:
                     target_input = self.smaller_hook_forward_dict[module_name]
                     if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
                         pass
+                    elif ".drop" in module_name or "_dropout" in module_name:
+                        pass 
                     elif len(target_input) == 1:
                         try:
                             self.smaller_forward_loss += self.caculate_loss(input[0], target_input[0])
-                            # print(f"input: {input[0]}, target_input: {target_input[0]}")
-                            # print(f"self.smaller_forward_loss: {self.smaller_forward_loss}")
-                            #import pdb; pdb.set_trace()
-                            #print(f"input: {input[0].shape}, target_input: {target_input[0].shape}")
                         except:
                             print("!!!!!!!!!!!!Bug!!!!!!!!!!!!!!!")
                             print(f"module: {module_name}")
@@ -608,18 +608,19 @@ class Distiller:
                             if target_input[idx] == None:
                                 pass
                             elif len(target_input[idx]) == 1:
-                                #try:
                                 self.smaller_forward_loss += self.caculate_loss(input[idx], target_input[idx])
-                                #except:
-                                #    print(input[idx].dtype, target_input[idx].dtype)
-                                #    raise ValueError(f"Error file: distill_llm.py, Invalid number: line 604+-")
                             else:
                                 for idxx in range(0, len(target_input[idx])):
-                                    #try:
                                     self.smaller_forward_loss += self.caculate_loss(input[idx][idxx], target_input[idx][idxx])
-                                    #except:
-                                    #    print(input[idx][idxx].dtype, target_input[idx][idxx].dtype)
-                                    #    raise ValueError(f"Error file: distill_llm.py, Invalid number: line 604+-")
+                    ####                
+                    print(self.smaller_forward_loss)
+                    if torch.isnan(torch.tensor(self.smaller_forward_loss)):
+                        print(module_name)
+                        #print(input)
+                        #print(target_input)
+                        import pdb; pdb.set_trace()
+                    ####                
+
                     return output 
                 return loss_hook
             else:
@@ -853,7 +854,7 @@ class Distiller:
         self.smaller_model.model.to(self.device)
 
 
-        # Need to revise
+        # Need to revise (Can run on 1 GPU under the follwoing settings)
         #half: fp16
         ######
         self.larger_model.model.half()
@@ -950,20 +951,20 @@ class Distiller:
             # loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
 
             
-            #############
+            ############# (Problem: loss becomes larger? from 0 to inf ?? why?)
             ###Forwardward loss###: smaller_model_next_token_prediction_loss (o), self.smaller_forward_loss (..) 
             # collect normal larger's forward 
             self.register_hook(self.larger_model.model, "larger", "forward", False, False)
-            larger_model_hidden_state = self.larger_model.forward(x)
+            larger_model_hidden_state = self.larger_model.forward(x, True)
             # collect downsample forwardward grad (with larger's downsampled)
             self.register_hook(self.smaller_model.model, "smaller", "forward", True, False)
-            smaller_model_hidden_state = self.smaller_model.forward(x)
+            smaller_model_hidden_state_downsampled = self.smaller_model.forward(x, False)
             self.larger_hook_forward_dict.clear()
             self.remove_hook(self.larger_forward_hook_list)
             self.remove_hook(self.smaller_forward_hook_list)
             # collect normal smaller's backward grad and get the next_token_prediction_loss
             self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
-            smaller_model_hidden_state = self.smaller_model.forward(x)
+            smaller_model_hidden_state = self.smaller_model.forward(x, True)
             #smaller_model_next_token_prediction_loss.backward()
             self.smaller_hook_forward_dict.clear()
             self.remove_hook(self.smaller_forward_hook_list)
@@ -1513,6 +1514,7 @@ transformer.h.31.mlp.c_proj.bias torch.Size([1024])
 transformer.ln_f.weight torch.Size([1024])
 transformer.ln_f.bias torch.Size([1024])
 '''
+
 
 '''
 transformer.wte 1
