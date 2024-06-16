@@ -576,23 +576,60 @@ class Distiller:
     def caculate_loss(self, y_prime, y):
         #threshold = 256
         #threshold = 10
-        print(y_prime, y)
+        #print(y_prime, y)
         loss = nn.MSELoss()(y_prime, y)
+        print(loss)
+        print("------")
         return loss
         #clipped_loss = torch.clamp(loss, min=None, max=threshold)
         #print(clipped_loss)
         #return clipped_loss
+   
     
+    '''
+    transformer.wte 1
+    transformer.drop 1
+    transformer.h.0.ln_1 1
+    transformer.h.0.attn.c_attn 1
+    transformer.h.0.attn.attn_dropout 1
+    transformer.h.0.attn.c_proj 1
+    transformer.h.0.attn.resid_dropout 1
+    transformer.h.0.attn 2
+    transformer.h.0.ln_2 1
+    transformer.h.0.mlp.c_fc2 1
+    transformer.h.0.mlp.c_fc 1
+    transformer.h.0.mlp.act 1
+    transformer.h.0.mlp.c_proj 1
+    transformer.h.0.mlp.dropout 1
+    transformer.h.0.mlp 1
+    transformer.h.0 2
+
+    transformer.wte.weight torch.Size([32032, 1024])
+    transformer.h.0.ln_1.weight torch.Size([1024])
+    transformer.h.0.ln_1.bias torch.Size([1024])
+    transformer.h.0.attn.c_attn.weight torch.Size([1024, 3072])
+    transformer.h.0.attn.c_attn.bias torch.Size([3072])
+    transformer.h.0.attn.c_proj.weight torch.Size([1024, 1024])
+    transformer.h.0.attn.c_proj.bias torch.Size([1024])
+    transformer.h.0.ln_2.weight torch.Size([1024])
+    transformer.h.0.ln_2.bias torch.Size([1024])
+    transformer.h.0.mlp.c_fc.weight torch.Size([1024, 2730])
+    transformer.h.0.mlp.c_fc.bias torch.Size([2730])
+    transformer.h.0.mlp.c_fc2.weight torch.Size([1024, 2730])
+    transformer.h.0.mlp.c_fc2.bias torch.Size([2730])
+    transformer.h.0.mlp.c_proj.weight torch.Size([2730, 1024])
+    transformer.h.0.mlp.c_proj.bias torch.Size([1024])
+    ''' 
     def forward_hook(self, module_name, model_name, is_before, is_loss):
         if is_loss:
-            #print(module_name)
+            print(module_name)
             if model_name == "smaller":
                 def loss_hook(module, input, output):
                     target_input = self.smaller_hook_forward_dict[module_name]
                     if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
                         pass
-                    elif ".drop" in module_name or "_dropout" in module_name:
-                        pass 
+                    #elif ".drop" in module_name or "_dropout" in module_name or "transformer.h.0.ln_1" in module_name:
+                    #    pass 
                     elif len(target_input) == 1:
                         try:
                             self.smaller_forward_loss += self.caculate_loss(input[0], target_input[0])
@@ -965,6 +1002,7 @@ class Distiller:
             # collect normal smaller's backward grad and get the next_token_prediction_loss
             self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
             smaller_model_hidden_state = self.smaller_model.forward(x, True)
+            print("======")
             #smaller_model_next_token_prediction_loss.backward()
             self.smaller_hook_forward_dict.clear()
             self.remove_hook(self.smaller_forward_hook_list)
@@ -1515,6 +1553,42 @@ transformer.ln_f.weight torch.Size([1024])
 transformer.ln_f.bias torch.Size([1024])
 '''
 
+
+'''
+transformer.wte 1
+transformer.drop 1
+transformer.h.0.ln_1 1
+transformer.h.0.attn.c_attn 1
+transformer.h.0.attn.attn_dropout 1
+transformer.h.0.attn.c_proj 1
+transformer.h.0.attn.resid_dropout 1
+transformer.h.0.attn 2
+transformer.h.0.ln_2 1
+transformer.h.0.mlp.c_fc2 1
+transformer.h.0.mlp.c_fc 1
+transformer.h.0.mlp.act 1
+transformer.h.0.mlp.c_proj 1
+transformer.h.0.mlp.dropout 1
+transformer.h.0.mlp 1
+transformer.h.0 2
+
+
+transformer.wte.weight torch.Size([32032, 1024])
+transformer.h.0.ln_1.weight torch.Size([1024])
+transformer.h.0.ln_1.bias torch.Size([1024])
+transformer.h.0.attn.c_attn.weight torch.Size([1024, 3072])
+transformer.h.0.attn.c_attn.bias torch.Size([3072])
+transformer.h.0.attn.c_proj.weight torch.Size([1024, 1024])
+transformer.h.0.attn.c_proj.bias torch.Size([1024])
+transformer.h.0.ln_2.weight torch.Size([1024])
+transformer.h.0.ln_2.bias torch.Size([1024])
+transformer.h.0.mlp.c_fc.weight torch.Size([1024, 2730])
+transformer.h.0.mlp.c_fc.bias torch.Size([2730])
+transformer.h.0.mlp.c_fc2.weight torch.Size([1024, 2730])
+transformer.h.0.mlp.c_fc2.bias torch.Size([2730])
+transformer.h.0.mlp.c_proj.weight torch.Size([2730, 1024])
+transformer.h.0.mlp.c_proj.bias torch.Size([1024])
+'''
 
 '''
 transformer.wte 1
