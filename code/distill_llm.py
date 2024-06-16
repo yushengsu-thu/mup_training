@@ -583,7 +583,7 @@ class Distiller:
         print(loss)
         if torch.isinf(loss):
             print("Loss is inf. Handling special case.")
-            loss = torch.tensor(threshold, requires_grad=True)
+            loss = threshold + loss*0 #torch.tensor(threshold, requires_grad=True)
             print(f"loss set as: {threshold}")
         print("------")
         # if loss.item() > 100:
