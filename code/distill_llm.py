@@ -580,6 +580,8 @@ class Distiller:
         loss = nn.MSELoss()(y_prime, y)
         print(loss)
         print("------")
+        if loss.item() > 100:
+            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 584+-")
         return loss
         #clipped_loss = torch.clamp(loss, min=None, max=threshold)
         #print(clipped_loss)
@@ -622,9 +624,9 @@ class Distiller:
     ''' 
     def forward_hook(self, module_name, model_name, is_before, is_loss):
         if is_loss:
-            print(module_name)
             if model_name == "smaller":
                 def loss_hook(module, input, output):
+                    print(module_name)
                     target_input = self.smaller_hook_forward_dict[module_name]
                     if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
                         pass
@@ -650,7 +652,7 @@ class Distiller:
                                 for idxx in range(0, len(target_input[idx])):
                                     self.smaller_forward_loss += self.caculate_loss(input[idx][idxx], target_input[idx][idxx])
                     ####                
-                    print(self.smaller_forward_loss)
+                    #print(self.smaller_forward_loss)
                     if torch.isnan(torch.tensor(self.smaller_forward_loss)):
                         print(module_name)
                         #print(input)
