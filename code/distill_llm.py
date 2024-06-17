@@ -21,6 +21,7 @@
 from ast import mod
 import copy
 import imp
+from operator import is_
 from pickletools import optimize
 from re import sub
 from xml.etree.ElementTree import TreeBuilder
@@ -577,19 +578,17 @@ class Distiller:
 
     def caculate_loss(self, y_prime, y):
         #threshold = 256
-        threshold = 10
         #print(y_prime, y)
         loss = nn.MSELoss()(y_prime, y)
         print(loss)
         if torch.isinf(loss):
-            print("Loss is {loss}. Handling special case.")
+            threshold = 10
+            print("Loss is {loss.item()}. Handling special case.")
             print(f"y: {y}, y_prime: {y_prime}")
-            loss = threshold + loss*0 #torch.tensor(threshold, requires_grad=True)
-            print(f"loss set as: {loss}")
-            import pdb; pdb.set_trace()
-        print("------")
-        # if loss.item() > 100:
-        #     raise ValueError(f"Error file: distill_llm.py, Invalid number: line 584+-")
+            #loss = threshold + loss*0 #torch.tensor(threshold, requires_grad=True)
+            loss = torch.tensor(threshold, dtype=loss.dtype, device=loss.device)
+            print(f"loss set as: {loss.item()}")
+            print("---------")
         return loss
         #clipped_loss = torch.clamp(loss, min=None, max=threshold)
         #print(clipped_loss)
@@ -634,24 +633,25 @@ class Distiller:
         if is_loss:
             if model_name == "smaller":
                 def loss_hook(module, input, output):
-                    print(module_name)
+                    #print(module_name)
                     target_input = self.smaller_hook_forward_dict[module_name]
                     if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
                         pass
-                    elif "transformer.drop" in module_name or ".ln_1" in module_name or ".c_proj" in module_name:
+                    elif "transformer.drop" in module_name or ".ln_1" in module_name or ".c_proj" in module_name or ".attn_dropout" in module_name:
                         pass 
                     elif re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.attn$", module_name) or re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.mlp$", module_name):
                         pass
                     elif len(target_input) == 1:
                         try:
                             self.smaller_forward_loss += self.caculate_loss(input[0], target_input[0])
-                        except:
+                        except Exception as e:
                             print("!!!!!!!!!!!!Bug!!!!!!!!!!!!!!!")
-                            print(f"module: {module_name}")
+                            print("An error occurred:", e)
+                            #print(f"module: {module_name}")
                             print(input[0].shape, target_input[0].shape)
                             print(input[0].dtype, target_input[0].dtype)
                             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 594+-")
+                            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 654+-")
                     else:
                         for idx in range(0, len(target_input)): 
                             if target_input[idx] == None:
@@ -677,12 +677,21 @@ class Distiller:
         else: 
             if model_name == "smaller":
                 def f_hook(module, input, output, is_before=is_before):
-                    #print(module_name)
-                    if ".wte" in module_name or ".attn.c_attn" in module_name or ".attn.attn_dropout" in module_name or ".mlp.c_fc2" in module_name or ".mlp.c_fc" in module_name or ".mlp.c_proj" in module_name or "transformer" == module_name or "lm_head" == module_name or "" == module_name: 
+                    print(module_name)
+                    # if ".wte" in module_name or ".attn.c_attn" in module_name or ".attn.attn_dropout" in module_name or ".mlp.c_fc2" in module_name or ".mlp.c_fc" in module_name or ".mlp.c_proj" in module_name or "transformer" == module_name or "lm_head" == module_name or "" == module_name: 
+                    #     is_before = False
+                    #####
+                    if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
                         is_before = False
+                    elif "transformer.drop" in module_name or ".ln_1" in module_name or ".c_proj" in module_name or ".attn_dropout" in module_name:
+                        is_before = False 
+                    elif re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.attn$", module_name) or re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.mlp$", module_name):
+                        is_before = False
+                    #####
                     if is_before:
                         self.smaller_hook_forward_dict[module_name] = input 
                         modified_output = self.larger_hook_forward_dict[module_name]
+                        
                         if input[0] == None:
                             #return output
                             pass
