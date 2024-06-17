@@ -582,9 +582,11 @@ class Distiller:
         loss = nn.MSELoss()(y_prime, y)
         print(loss)
         if torch.isinf(loss):
-            print("Loss is inf. Handling special case.")
+            print("Loss is {loss}. Handling special case.")
+            print(f"y: {y}, y_prime: {y_prime}")
             loss = threshold + loss*0 #torch.tensor(threshold, requires_grad=True)
-            print(f"loss set as: {threshold}")
+            print(f"loss set as: {loss}")
+            import pdb; pdb.set_trace()
         print("------")
         # if loss.item() > 100:
         #     raise ValueError(f"Error file: distill_llm.py, Invalid number: line 584+-")
@@ -662,9 +664,9 @@ class Distiller:
                     ####                
                     #print(self.smaller_forward_loss)
                     if torch.isnan(torch.tensor(self.smaller_forward_loss)):
-                        print(module_name)
-                        #print(input)
-                        #print(target_input)
+                        print(f"issue raised in: {module_name}")
+                        print(f"input: {input}")
+                        print(f"target_input: {target_input}")
                         import pdb; pdb.set_trace()
                     ####                
 
