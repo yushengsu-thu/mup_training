@@ -20,10 +20,10 @@
 
 from ast import mod
 import copy
-import imp
+#import imp
 from operator import is_
 from pickletools import optimize
-from re import sub
+from re import I, sub
 from xml.etree.ElementTree import TreeBuilder
 from sympy import O
 import torch
@@ -51,6 +51,7 @@ import os
 import argparse
 
 from torch.distributions import Normal, kl_divergence
+import torch.nn.functional as F
 
 import re
 
@@ -135,6 +136,13 @@ class LargerModel:
         z = z.view(-1, z.shape[-1])
         loss = F.cross_entropy(z, y)
         return loss
+    def forward_and_loss(self, x, y, output_hidden_states):
+        x = x.to(self.model.device)
+        z = self.model(x, output_hidden_states=output_hidden_states)
+        y = y.reshape(-1)
+        y_prime = z.logits.view(-1, z.logits.shape[-1])
+        loss = F.cross_entropy(y_prime, y)
+        return z, loss
     
 
 # 1 D
@@ -330,6 +338,14 @@ class SmallerModel:
         #return clipped_loss
         return loss
 
+    def forward_and_loss(self, x, y, output_hidden_states):
+        x = x.to(self.model.device)
+        z = self.model(x, output_hidden_states=output_hidden_states)
+        y = y.reshape(-1)
+        y_prime = z.logits.view(-1, z.logits.shape[-1])
+        loss = F.cross_entropy(y_prime, y)
+        return z, loss
+
 
 class Distiller:
     def __init__(self, parser, larger_model, smaller_model):
@@ -502,93 +518,84 @@ class Distiller:
         # print(small_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
         mean_large = large_hidden_states.mean(dim=(1, 2, 3))
         mean_small = small_hidden_states.mean(dim=(1, 2, 3))
-        mean_loss = torch.abs(mean_large - mean_small).sum()
-        return mean_loss
+        #loss = nn.MSELoss(reduction="sum")(mean_large, mean_small)
+        loss = self.caculate_loss(mean_large, mean_small)
+        return loss
 
-    def compute_kl_divergence_distance(self, large_hidden_states, small_hidden_states):
+    # def compute_kl_divergence_distance(self, large_hidden_states, small_hidden_states):
+    #     # Small constant to prevent division by zero in std computation
+    #     epsilon = 1e-6
+    #     mean_large = large_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
+    #     std_large = large_hidden_states.std(dim=(1, 2, 3), keepdim=True) #+ epsilon
+    #     mean_small = small_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
+    #     std_small = small_hidden_states.std(dim=(1, 2, 3), keepdim=True) #+ epsilon
+    #     #import pdb; pdb.set_trace()
+
+    #     # Check for NaNs in computed means and stds
+    #     if torch.isnan(mean_large).any():
+    #         mean_large = torch.nan_to_num(mean_large, nan=epsilon)
+    #     if torch.isnan(mean_small).any():
+    #         mean_small = torch.nan_to_num(mean_small, nan=epsilon)
+    #     if torch.isnan(std_large).any():
+    #         std_large = torch.nan_to_num(std_large, nan=epsilon)
+    #     if torch.isnan(std_small).any():
+    #         std_small = torch.nan_to_num(std_small, nan=epsilon)
+        
+    #     #torch.clamp: prevent std becomes 0 
+    #     std_large = torch.clamp(std_large, min=epsilon)
+    #     mean_large = torch.clamp(mean_large, min=epsilon)
+    #     dist_large = Normal(mean_large, std_large)
+
+    #     std_small = torch.clamp(std_small, min=epsilon)
+    #     mean_small = torch.clamp(mean_small, min=1e-6)
+    #     dist_small = Normal(mean_small, std_small)
+    #     # caculate KL by layer
+    #     #kl_div = kl_divergence(dist_large, dist_small).mean(dim=(1, 2))
+    #     kl_div = kl_divergence(dist_large, dist_small).sum()
+
+    #     return kl_div
+
+
+    def compute_std_loss(self, large_hidden_states, small_hidden_states):
         # Small constant to prevent division by zero in std computation
-        epsilon = 1e-4
-        mean_large = large_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
-        std_large = large_hidden_states.std(dim=(1, 2, 3), keepdim=True) + epsilon
-        mean_small = small_hidden_states.mean(dim=(1, 2, 3), keepdim=True)
-        std_small = small_hidden_states.std(dim=(1, 2, 3), keepdim=True) + epsilon
-        #import pdb; pdb.set_trace()
+        epsilon = 1e-6
+        std_large = large_hidden_states.std(dim=(1, 2, 3)) #+ epsilon
+        std_small = small_hidden_states.std(dim=(1, 2, 3)) #+ epsilon
+        
+        #torch.clamp: prevent std becomes 0 
+        std_large = torch.clamp(std_large, min=epsilon)
+        std_small = torch.clamp(std_small, min=epsilon)
+        #kl_div = kl_divergence(std_large, std_small).sum()
+        #loss = nn.MSELoss(reduction="sum")(std_large, std_small)
+        loss = self.caculate_loss(std_large, std_small)
+        return loss
 
-        # Check for NaNs in computed means and stds
-        if torch.isnan(mean_large).any():
-            mean_large = torch.nan_to_num(mean_large, nan=0.0)
-        if torch.isnan(mean_small).any():
-            mean_small = torch.nan_to_num(mean_small, nan=0.0)
-        if torch.isnan(std_large).any():
-            std_large = torch.nan_to_num(std_large, nan=0.0)
-        if torch.isnan(std_small).any():
-            std_small = torch.nan_to_num(std_small, nan=0.0)
-            
-            # print()
-            # #print(mean_large, std_large, mean_small, std_small)
-            # print("=======")
-            # print(mean_small)
-            # print("----")
-            # print(std_small)
-            # print("KL_loss: NaN detected in statistical computations")
-            # threshold = 10
-            # loss = nn.MSELoss()(y_prime, y)
-            # clipped_loss = torch.clamp(loss, min=None, max=threshold)
-            # Return zero (or epsilon) loss or handle appropriately
-            #return torch.tensor(0.0, device=mean_large.device)  # Return zero loss or handle appropriately
-        # build distribute
-        dist_large = Normal(mean_large, std_large)
-        dist_small = Normal(mean_small, std_small)
-        # caculate KL by layer
-        #kl_div = kl_divergence(dist_large, dist_small).mean(dim=1)
-        kl_div = kl_divergence(dist_large, dist_small).mean(dim=(1, 2, 3)).sum()
-        threshold = 64
-        clipped_loss = torch.clamp(kl_div, min=None, max=threshold)
-        return kl_div
 
     def layerwise_hidden_loss(self, output_large, output_small):
-        '''
-        # Logit loss
-        large_logits = output_large.logits #torch.Size([4, 2048, 32032])
-        small_logits = output_small.logits #torch.Size([4, 2048, 32032])
-        loss = torch.nn.MSELoss()(large_logits, small_logits)
-        '''
-
         large_hidden_states = output_large.hidden_states
         large_hidden_states = torch.stack(large_hidden_states)
         small_hidden_states = output_small.hidden_states
         small_hidden_states = torch.stack(small_hidden_states)
-        # print("======")
-        # print(large_hidden_states.shape) #torch.Size([33, 4, 2048, 4096])
-        # print(small_hidden_states.shape) #torch.Size([33, 4, 2048, 1024])
-        # print(large_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
-        # print(small_hidden_states.shape) #torch.Size([layers of the model, batch_size, seq_length, output_dim])
-        # print("======")
 
-
-        # compute_mean_loss of large_hidden_states and small_hidden_states for each layer
-        # calculate the overall loss as the sum of mean_loss and wasserstein_distance
         mean_loss = self.compute_mean_loss(large_hidden_states, small_hidden_states)
-        # compute_kl_distance of large_hidden_states and small_hidden_states for each layer
-        kl_loss = self.compute_kl_divergence_distance(large_hidden_states, small_hidden_states)
-        #print("ml:", mean_loss.shape)
-        #print("kl:", kl_loss.shape)
-        loss = mean_loss + kl_loss
+        std_loss = self.compute_std_loss(large_hidden_states, small_hidden_states)
+        print(f"mean_loss: {mean_loss}, std_loss: {std_loss}")
+        
+        loss = mean_loss + std_loss
+        return loss
+
+    def logits_loss(self, output_large, output_small):
+        large_logits = output_large.logits
+        small_logits = output_small.logits
+        loss = self.caculate_loss(large_logits, small_logits)
         return loss
 
     def caculate_loss(self, y_prime, y):
         #threshold = 256
-        #print(y_prime, y)
+        threshold = 10
         loss = nn.MSELoss()(y_prime, y)
-        print(loss)
         if torch.isinf(loss):
-            threshold = 10
-            print("Loss is {loss.item()}. Handling special case.")
-            print(f"y: {y}, y_prime: {y_prime}")
-            #loss = threshold + loss*0 #torch.tensor(threshold, requires_grad=True)
             loss = torch.tensor(threshold, dtype=loss.dtype, device=loss.device)
-            print(f"loss set as: {loss.item()}")
-            print("---------")
         return loss
         #clipped_loss = torch.clamp(loss, min=None, max=threshold)
         #print(clipped_loss)
@@ -667,7 +674,8 @@ class Distiller:
                         print(f"issue raised in: {module_name}")
                         print(f"input: {input}")
                         print(f"target_input: {target_input}")
-                        import pdb; pdb.set_trace()
+                        #import pdb; pdb.set_trace()
+                        raise ValueError(f"Error file: distill_llm.py, Invalid number: line 689+-")
                     ####                
 
                     return output 
@@ -677,7 +685,7 @@ class Distiller:
         else: 
             if model_name == "smaller":
                 def f_hook(module, input, output, is_before=is_before):
-                    print(module_name)
+                    #print(module_name)
                     # if ".wte" in module_name or ".attn.c_attn" in module_name or ".attn.attn_dropout" in module_name or ".mlp.c_fc2" in module_name or ".mlp.c_fc" in module_name or ".mlp.c_proj" in module_name or "transformer" == module_name or "lm_head" == module_name or "" == module_name: 
                     #     is_before = False
                     #####
@@ -977,14 +985,13 @@ class Distiller:
             # self.smaller_hook_backward_dict.clear()
             # self.remove_hook(self.smaller_backward_hook_list)
              
-
             
             # loss += smaller_model_next_token_prediction_loss #+ self.smaller_backward_loss
 
 
-
             #### above already confirmed #####
 
+            # Forward_pass: delete this one
             # ###Forwardward loss### : smaller_model_next_token_prediction_loss (o), self.smaller_forward_loss (..) 
             # # collect normal larger's forward 
             # self.register_hook(self.larger_model.model, "larger", "forward", False, False)
@@ -1008,29 +1015,29 @@ class Distiller:
             # print(f"self.smaller_forward_loss: {self.smaller_forward_loss}")
             # loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
 
-            
-            ############# (Problem: loss becomes larger? from 0 to inf ?? why?)
-            ###Forwardward loss###: smaller_model_next_token_prediction_loss (o), self.smaller_forward_loss (..) 
-            # collect normal larger's forward 
-            self.register_hook(self.larger_model.model, "larger", "forward", False, False)
-            larger_model_hidden_state = self.larger_model.forward(x, True)
-            # collect downsample forwardward grad (with larger's downsampled)
-            self.register_hook(self.smaller_model.model, "smaller", "forward", True, False)
-            smaller_model_hidden_state_downsampled = self.smaller_model.forward(x, False)
-            self.larger_hook_forward_dict.clear()
-            self.remove_hook(self.larger_forward_hook_list)
-            self.remove_hook(self.smaller_forward_hook_list)
-            # collect normal smaller's backward grad and get the next_token_prediction_loss
-            self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
-            smaller_model_hidden_state = self.smaller_model.forward(x, True)
-            print("======")
-            #smaller_model_next_token_prediction_loss.backward()
-            self.smaller_hook_forward_dict.clear()
-            self.remove_hook(self.smaller_forward_hook_list)
-            ## loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
-            print(f"smaller_forward_loss: {self.smaller_forward_loss}")
-            loss += self.smaller_forward_loss
-            #############
+            # Forward_pass: Keep this one 
+            # ############# (Problem: loss becomes larger? from 0 to inf ?? why?)
+            # ###Forwardward loss###: smaller_model_next_token_prediction_loss (o), self.smaller_forward_loss (..) 
+            # # collect normal larger's forward 
+            # self.register_hook(self.larger_model.model, "larger", "forward", False, False)
+            # larger_model_hidden_state = self.larger_model.forward(x, True)
+            # # collect downsample forwardward grad (with larger's downsampled)
+            # self.register_hook(self.smaller_model.model, "smaller", "forward", True, False)
+            # smaller_model_hidden_state_downsampled = self.smaller_model.forward(x, False)
+            # self.larger_hook_forward_dict.clear()
+            # self.remove_hook(self.larger_forward_hook_list)
+            # self.remove_hook(self.smaller_forward_hook_list)
+            # # collect normal smaller's backward grad and get the next_token_prediction_loss
+            # self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
+            # smaller_model_hidden_state = self.smaller_model.forward(x, True)
+            # print("======")
+            # #smaller_model_next_token_prediction_loss.backward()
+            # self.smaller_hook_forward_dict.clear()
+            # self.remove_hook(self.smaller_forward_hook_list)
+            # ## loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
+            # print(f"smaller_forward_loss: {self.smaller_forward_loss}")
+            # loss += self.smaller_forward_loss
+            # #############
             
 
             # #logits loss : logits_loss (..) 
@@ -1044,7 +1051,18 @@ class Distiller:
             # #self.accelerator.backward(layerwise_loss)  
             # loss += layerwise_loss
             
+
+            ###start from here: 
+            smaller_hidden_states, smaller_logits_loss = self.larger_model.forward_and_loss(x, y, True)
+            #larger_hidden_states, larger_logits_loss = self.smaller_model.forward_and_loss(x, y, True)
+            #### layer-wise loss
+            #layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
+            #### logits loss
+            #logits_loss = self.logits_loss(larger_hidden_states, smaller_hidden_states)
+
+            loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
             
+             
  
             #accumulated_loss += loss_2.item()
             total_loss += loss.item()
@@ -1062,10 +1080,10 @@ class Distiller:
             #### Do not deelete
             self.accelerator.backward(loss)
 
-            torch.nn.utils.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
+            #torch.nn.utils.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
+            #torch.nn.utils.clip_grad_value_(self.smaller_model.model.parameters(), clip_value=5.0)
             #torch.nn.utils.clip_grad_value_(self.smaller_model.model.parameters(), clip_value=1.0)
             #self.accelerator.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
-
             self.opt.step()
 
             continue
