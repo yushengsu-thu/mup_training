@@ -56,6 +56,7 @@ import torch.nn.functional as F
 import re
 import yaml
 from accelerate import FullyShardedDataParallelPlugin
+import inspect
 
 # split data, 1:9
 # add ppl
@@ -448,16 +449,22 @@ class Distiller:
         ###
 
 
-        with open(self.training_config_dir, 'r') as training_config_file:
-            training_config = yaml.safe_load(training_config_file)
-        self.training_config = FullyShardedDataParallelPlugin(**training_config) 
+        # with open(self.training_config_dir, 'r') as training_config_file:
+        #     training_config = yaml.safe_load(training_config_file)
+        # training_config = FullyShardedDataParallelPlugin(**training_config) 
+        # # the param in FullyShardedDataParallelPlugin:
+        # acceptable_params = inspect.signature(FullyShardedDataParallelPlugin.__init__).parameters
+        # training_config = {key: value for key, value in training_config.items() if key in acceptable_params}
         
+        training_config = self.load_and_filter_config(self.training_config_dir)
+        training_plugin = FullyShardedDataParallelPlugin(**training_config)
+         
         # I can change to fsdp
         self.accelerator = Accelerator(
             gradient_accumulation_steps=self.grad,
             #mixed_precision = 'fp8',
             mixed_precision = 'bf16',
-            fsdp_plugin = self.training_config,
+            fsdp_plugin = training_plugin,
             #megatron_lm_plugin = ,
             #deepspeed_plugin = ,
         )
@@ -466,6 +473,15 @@ class Distiller:
             self.larger_model, self.smaller_model, self.opt, self.loader
         )
 
+    def load_and_filter_config(self, training_config_dir):
+        with open(training_config_dir, 'r') as training_config_file:
+            training_config = yaml.safe_load(training_config_file)
+        # training_config = FullyShardedDataParallelPlugin(**training_config) 
+        # the param in FullyShardedDataParallelPlugin:
+        acceptable_params = inspect.signature(FullyShardedDataParallelPlugin.__init__).parameters
+        training_config = {key: value for key, value in training_config.items() if key in acceptable_params}
+        return training_config 
+        
 
     def show_params(self, model):
         '''
@@ -894,6 +910,11 @@ class Distiller:
     #         loss += torch.nn.MSELoss()(y_prime, y)
     #     # loss have no gredient: please add gredient!!!!!
     #     return loss
+    
+    def set_requires_grad(model, value=True):
+        for param in model.parameters():
+        param.requires_grad = value
+        
         
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
@@ -921,6 +942,10 @@ class Distiller:
         #self.opt.zero_grad()
 
         total_loss = 0
+        # def set_requires_grad(model, requires_grad):
+        #     for param in model.parameters():
+        #         param.requires_grad = requires_grad
+
         max_i = 0
         stop_batch = self.train_max_batch
         accumulated_loss = 0.0
@@ -928,17 +953,16 @@ class Distiller:
         self.larger_model.model.to(self.device)
         self.smaller_model.model.to(self.device)
 
-
-        # Need to revise (Can run on 1 GPU under the follwoing settings)
-        #half: fp16
+        # Need to revise (Can run on 1 GPU under the following settings)
+        # half: fp16
         ######
-        #self.larger_model.model.half()
-        #self.smaller_model.model.half()
-        
-        #self.larger_model.model.eval()
-        #self.larger_model.model.train()
-        set_requires_grad(self.larger_model, False)
-        self.smaller_model.model.train()
+        # self.larger_model.model.half()
+        # self.smaller_model.model.half()
+
+        # self.larger_model.model.eval()
+        # self.larger_model.model.train()
+        self.set_requires_grad(self.larger_model, False)
+        #self.smaller_model.model.train()
         ######
 
         print()
