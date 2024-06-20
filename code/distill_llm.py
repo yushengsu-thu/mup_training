@@ -54,6 +54,8 @@ from torch.distributions import Normal, kl_divergence
 import torch.nn.functional as F
 
 import re
+import yaml
+from accelerate import FullyShardedDataParallelPlugin
 
 # split data, 1:9
 # add ppl
@@ -348,7 +350,7 @@ class SmallerModel:
 
 
 class Distiller:
-    def __init__(self, parser, larger_model, smaller_model):
+    def __init__(self, parser, larger_model, smaller_model, rank):
 
         #self.max_tokens = 2**13
         self.llm = parser.llm
@@ -394,6 +396,9 @@ class Distiller:
         #loss
         self.smaller_backward_loss = 0
         self.smaller_forward_loss = 0
+
+        self.training_config_dir = parser.training_config_dir 
+        self.rank = rank
 
         self.show_params(self.larger_model.model)
         self.show_params(self.smaller_model.model)
@@ -442,16 +447,19 @@ class Distiller:
         '''
         ###
 
-        #fsdp_plugin = FSDPPlugin(mixed_precision="bf16", reshard_after_forward=True)
 
+        with open(self.training_config_dir, 'r') as training_config_file:
+            training_config = yaml.safe_load(training_config_file)
+        self.training_config = FullyShardedDataParallelPlugin(**training_config) 
+        
         # I can change to fsdp
         self.accelerator = Accelerator(
             gradient_accumulation_steps=self.grad,
             #mixed_precision = 'fp8',
             mixed_precision = 'bf16',
-            #fsdp_plugin = fsdp_plugin,
-            #megatron_lm_plugin = True,
-            #deepspeed_plugin = True,
+            fsdp_plugin = self.training_config,
+            #megatron_lm_plugin = ,
+            #deepspeed_plugin = ,
         )
 
         self.larger_model, self.smaller_model, self.opt, self.loader= self.accelerator.prepare(
@@ -491,16 +499,17 @@ class Distiller:
         '''
 
 
-        print("======Model Para=========")
-        params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        emb_params = list(model.transformer.wte.parameters())
-        emb_params += list(model.lm_head.parameters())
-        emb_params = sum(p.numel() for p in emb_params if p.requires_grad)
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print("Params:", params - emb_params)
-        print("Params (incl. embeddings):", params)
-        print("Trainable params:", trainable_params)
-        print("===========================")
+        if self.rank == 0:
+            print("======Model Para=========")
+            params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            emb_params = list(model.transformer.wte.parameters())
+            emb_params += list(model.lm_head.parameters())
+            emb_params = sum(p.numel() for p in emb_params if p.requires_grad)
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print("Params:", params - emb_params)
+            print("Params (incl. embeddings):", params)
+            print("Trainable params:", trainable_params)
+            print("===========================")
 
         '''
         return CausalLMOutputWithCrossAttentions(
@@ -923,11 +932,12 @@ class Distiller:
         # Need to revise (Can run on 1 GPU under the follwoing settings)
         #half: fp16
         ######
-        self.larger_model.model.half()
-        self.smaller_model.model.half()
-
-        self.larger_model.model.eval()
+        #self.larger_model.model.half()
+        #self.smaller_model.model.half()
+        
+        #self.larger_model.model.eval()
         #self.larger_model.model.train()
+        set_requires_grad(self.larger_model, False)
         self.smaller_model.model.train()
         ######
 
@@ -1054,20 +1064,23 @@ class Distiller:
 
             ###start from here: 
             smaller_hidden_states, smaller_logits_loss = self.larger_model.forward_and_loss(x, y, True)
-            #larger_hidden_states, larger_logits_loss = self.smaller_model.forward_and_loss(x, y, True)
+            #with torch.no_grad():
+            #    larger_hidden_states, larger_logits_loss = self.smaller_model.forward_and_loss(x, y, True)
             #### layer-wise loss
             #layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
             #### logits loss
             #logits_loss = self.logits_loss(larger_hidden_states, smaller_hidden_states)
 
+            #loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
             loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
             
              
  
             #accumulated_loss += loss_2.item()
             total_loss += loss.item()
-            prog.set_description(f"loss: {loss.item():.3f}")
-            prog.set_description(f"total_loss: {total_loss/self.step:.3f}")
+            if self.rank == 0:
+                prog.set_description(f"loss: {loss.item():.3f}")
+                prog.set_description(f"total_loss: {total_loss/self.step:.3f}")
             '''
             wandb.log(
                 {
@@ -1098,7 +1111,7 @@ class Distiller:
         print(f"total_loss: {total_loss:.3f}")
         print("========================================")
 
-
+        
 
 def main():
     parser = argparse.ArgumentParser()
@@ -1115,15 +1128,25 @@ def main():
     parser.add_argument('--distill_model_config', type=str, default = "", help='distill_model_config')
     parser.add_argument('--grad_step', type=int, default=64, help='grad steps')
     parser.add_argument('--reduction_factor', type=int, default=4, help='reduction_factor')
+    parser.add_argument('--training_config_dir', type=str, default=os.getcwd()+"/../config/default_config_fsdp.yaml", help='training_config_dir')
 
     parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     args = parser.parse_args()
     #args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
+    
+    try:
+        torch.distributed.init_process_group(backend='nccl')
+        rank = torch.distributed.get_rank()
+    except Exception as e:
+        # Handle the exception here
+        print("An error occurred:", str(e))
+        print("Only one GPU training:", str(e))
+        rank = 0
 
     smaller_model = SmallerModel(args)
     larger_model = LargerModel(args)
-    distiller = Distiller(args, larger_model, smaller_model)
+    distiller = Distiller(args, larger_model, smaller_model, rank)
     distiller.distill()
 
 
