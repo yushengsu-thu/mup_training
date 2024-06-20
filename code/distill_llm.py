@@ -912,7 +912,7 @@ class Distiller:
     #     return loss
     
     def set_requires_grad(self, model, value):
-        for param in model.parameters():
+        for name, param in model.model.named_parameters():
             param.requires_grad = value
         
         
