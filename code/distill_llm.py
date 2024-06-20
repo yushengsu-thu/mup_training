@@ -911,9 +911,9 @@ class Distiller:
     #     # loss have no gredient: please add gredient!!!!!
     #     return loss
     
-    def set_requires_grad(model, value=True):
+    def set_requires_grad(self, model, value):
         for param in model.parameters():
-        param.requires_grad = value
+            param.requires_grad = value
         
         
     def distill(self):
@@ -942,9 +942,6 @@ class Distiller:
         #self.opt.zero_grad()
 
         total_loss = 0
-        # def set_requires_grad(model, requires_grad):
-        #     for param in model.parameters():
-        #         param.requires_grad = requires_grad
 
         max_i = 0
         stop_batch = self.train_max_batch
@@ -965,8 +962,9 @@ class Distiller:
         #self.smaller_model.model.train()
         ######
 
-        print()
-        print("lr:{}".format(self.learning_rate))
+        if self.rank == 0:
+            print()
+            print("lr:{}".format(self.learning_rate))
         loss_1 = 0
         loss_2 = 0
 
