@@ -7,6 +7,7 @@ datasets==2.18.0
 matplotlib==3.8.3
 #pytorch_lightning
 deepspeed==0.14.3
+accelerate==0.31.0
 
 # install megatron-lm
 # https://huggingface.co/docs/accelerate/en/usage_guides/megatron_lm

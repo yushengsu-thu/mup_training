@@ -218,6 +218,7 @@ def _subsample_embeddings_dim1(matrix_original, matrix_target, reduction_factor)
 def _subsample_embeddings_dimlast(matrix_original, matrix_target, reduction_factor):
     device = matrix_original.get_device() 
     indices = torch.arange(0, matrix_original.size(-1), reduction_factor).to(device)
+    #indices = torch.arange(0, matrix_original.size(-1), reduction_factor)
     out_dim_1 = int(indices.shape[0])
     target_d1 = int(matrix_target.shape[-1])
     if out_dim_1 == target_d1:
@@ -351,7 +352,8 @@ class SmallerModel:
 
 
 class Distiller:
-    def __init__(self, parser, larger_model, smaller_model, rank):
+    #def __init__(self, parser, larger_model, smaller_model, rank):
+    def __init__(self, parser, larger_model, smaller_model):
 
         #self.max_tokens = 2**13
         self.llm = parser.llm
@@ -399,10 +401,8 @@ class Distiller:
         self.smaller_forward_loss = 0
 
         self.training_config_dir = parser.training_config_dir 
-        self.rank = rank
+        #self.rank = rank
 
-        self.show_params(self.larger_model.model)
-        self.show_params(self.smaller_model.model)
 
 
         '''
@@ -469,9 +469,17 @@ class Distiller:
             #deepspeed_plugin = ,
         )
 
+        
+        #self.is_local_main_process = self.accelerator.is_local_main_process 
+
+
         self.larger_model, self.smaller_model, self.opt, self.loader= self.accelerator.prepare(
             self.larger_model, self.smaller_model, self.opt, self.loader
         )
+
+        #### Show paprameters:
+        self.show_params(self.larger_model.model)
+        self.show_params(self.smaller_model.model)
 
     def load_and_filter_config(self, training_config_dir):
         with open(training_config_dir, 'r') as training_config_file:
@@ -515,7 +523,9 @@ class Distiller:
         '''
 
 
-        if self.rank == 0:
+        #if self.rank == 0:
+        #if self.is_local_main_process:
+        if self.accelerator.is_local_main_process:
             print("======Model Para=========")
             params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             emb_params = list(model.transformer.wte.parameters())
@@ -947,8 +957,8 @@ class Distiller:
         stop_batch = self.train_max_batch
         accumulated_loss = 0.0
 
-        self.larger_model.model.to(self.device)
-        self.smaller_model.model.to(self.device)
+        #self.larger_model.model.to(self.device)
+        #self.smaller_model.model.to(self.device)
 
         # Need to revise (Can run on 1 GPU under the following settings)
         # half: fp16
@@ -962,7 +972,9 @@ class Distiller:
         self.smaller_model.model.train()
         ######
 
-        if self.rank == 0:
+        #if self.rank == 0:
+        #if self.is_local_main_process:
+        if self.accelerator.is_local_main_process:
             print()
             print("lr:{}".format(self.learning_rate))
         loss_1 = 0
@@ -1095,13 +1107,16 @@ class Distiller:
 
             #loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
             loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
+            #print(f"loss: {loss}, rank: {self.rank}")
 
-            import pdb; pdb.set_trace() 
+            #import pdb; pdb.set_trace() 
              
  
             #accumulated_loss += loss_2.item()
             total_loss += loss.item()
-            if self.rank == 0:
+            #if self.rank == 0:
+            #if self.is_local_main_process:
+            if self.accelerator.is_local_main_process:
                 prog.set_description(f"loss: {loss.item():.3f}")
                 prog.set_description(f"total_loss: {total_loss/self.step:.3f}")
             '''
@@ -1159,18 +1174,19 @@ def main():
     args = parser.parse_args()
     #args.checkpoint = os.getcwd()+"/../checkpoint/" + args.checkpoint
     
-    try:
-        torch.distributed.init_process_group(backend='nccl')
-        rank = torch.distributed.get_rank()
-    except Exception as e:
-        # Handle the exception here
-        print("An error occurred:", str(e))
-        print("Only one GPU training:", str(e))
-        rank = 0
+    # try:
+    #     torch.distributed.init_process_group(backend='nccl')
+    #     rank = torch.distributed.get_rank()
+    # except Exception as e:
+    #     # Handle the exception here
+    #     print("An error occurred:", str(e))
+    #     print("Only one GPU training:", str(e))
+    #     rank = 0
 
     smaller_model = SmallerModel(args)
     larger_model = LargerModel(args)
-    distiller = Distiller(args, larger_model, smaller_model, rank)
+    #distiller = Distiller(args, larger_model, smaller_model, rank)
+    distiller = Distiller(args, larger_model, smaller_model)
     distiller.distill()
 
 
