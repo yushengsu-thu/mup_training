@@ -912,7 +912,7 @@ class Distiller:
     #     return loss
     
     def set_requires_grad(self, model, value):
-        for name, param in model.model.named_parameters():
+        for name, param in model.named_parameters():
             param.requires_grad = value
         
         
@@ -956,10 +956,10 @@ class Distiller:
         # self.larger_model.model.half()
         # self.smaller_model.model.half()
 
-        # self.larger_model.model.eval()
+        self.larger_model.model.eval()
         # self.larger_model.model.train()
-        self.set_requires_grad(self.larger_model, False)
-        #self.smaller_model.model.train()
+        # self.set_requires_grad(self.larger_model.model, False)
+        self.smaller_model.model.train()
         ######
 
         if self.rank == 0:
@@ -983,8 +983,8 @@ class Distiller:
             
             self.opt.zero_grad()
 
-            if i == stop_batch:
-                break
+            #if i == stop_batch:
+            #    break
             self.step = i + 1
 
             x, y = batch[:, :-1], batch[:, 1:]
@@ -1095,7 +1095,8 @@ class Distiller:
 
             #loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
             loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
-            
+
+            import pdb; pdb.set_trace() 
              
  
             #accumulated_loss += loss_2.item()
@@ -1114,6 +1115,7 @@ class Distiller:
 
             #### Do not deelete
             self.accelerator.backward(loss)
+            #loss.backward()
 
             #torch.nn.utils.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
             #torch.nn.utils.clip_grad_value_(self.smaller_model.model.parameters(), clip_value=5.0)
