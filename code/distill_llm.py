@@ -454,11 +454,11 @@ class Distiller:
         
         #self.is_local_main_process = self.accelerator.is_local_main_process 
 
-        self.smaller_model = self.smaller_model.to(self.device)
-        self.larger_model = self.larger_model.to(self.device) 
+        self.smaller_model.model = self.smaller_model.model.to(self.device)
+        self.larger_model.model = self.larger_model.model.to(self.device) 
 
-        self.larger_model, self.smaller_model, self.opt, self.loader= self.accelerator.prepare(
-            self.larger_model, self.smaller_model, self.opt, self.loader
+        self.larger_model.model, self.smaller_model.model, self.opt, self.loader= self.accelerator.prepare(
+            self.larger_model.model, self.smaller_model.model, self.opt, self.loader
         )
 
         #### Show paprameters:
@@ -947,8 +947,8 @@ class Distiller:
         # Need to revise (Can run on 1 GPU under the following settings)
         # half: fp16
         ######
-        # self.larger_model.model.half()
-        # self.smaller_model.model.half()
+        self.larger_model.model.half()
+        self.smaller_model.model.half()
 
         self.larger_model.model.eval()
         # self.larger_model.model.train()

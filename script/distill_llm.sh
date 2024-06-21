@@ -12,8 +12,8 @@ VERSION="CrystalCoder_phase1_checkpoint_055500"
 #CUDA_VISIBLE_DEVICES=0
 #accelerate launch ../code/distill_llm.py \
 
-#python3 ../code/distill_llm.py \
-accelerate launch ../code/distill_llm.py \
+#accelerate launch ../code/distill_llm.py \
+python3 ../code/distill_llm.py \
     --llm $LLM \
     --max_tokens 2048 \
     --learning_rate 3e-5 \
