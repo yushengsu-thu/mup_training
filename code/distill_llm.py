@@ -130,7 +130,7 @@ class LargerModel:
             trust_remote_code=True
         )
     def forward(self, x, output_hidden_states):
-        x = x.to(self.model.device)
+        #x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=output_hidden_states)
         return z
     def next_token_prediction_loss(self, x, y):
@@ -140,7 +140,7 @@ class LargerModel:
         loss = F.cross_entropy(z, y)
         return loss
     def forward_and_loss(self, x, y, output_hidden_states):
-        x = x.to(self.model.device)
+        #x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=output_hidden_states)
         y = y.reshape(-1)
         y_prime = z.logits.view(-1, z.logits.shape[-1])
@@ -217,7 +217,7 @@ def _subsample_embeddings_dim1(matrix_original, matrix_target, reduction_factor)
     return subsampled_matrix.data
 def _subsample_embeddings_dimlast(matrix_original, matrix_target, reduction_factor):
     device = matrix_original.get_device() 
-    indices = torch.arange(0, matrix_original.size(-1), reduction_factor).to(device)
+    indices = torch.arange(0, matrix_original.size(-1), reduction_factor)#.to(device)
     #indices = torch.arange(0, matrix_original.size(-1), reduction_factor)
     out_dim_1 = int(indices.shape[0])
     target_d1 = int(matrix_target.shape[-1])
@@ -327,7 +327,7 @@ class SmallerModel:
         del model_original
 
     def forward(self, x, output_hidden_states):
-        x = x.to(self.model.device)
+        #x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=output_hidden_states)
         return z
 
@@ -343,7 +343,7 @@ class SmallerModel:
         return loss
 
     def forward_and_loss(self, x, y, output_hidden_states):
-        x = x.to(self.model.device)
+        #x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=output_hidden_states)
         y = y.reshape(-1)
         y_prime = z.logits.view(-1, z.logits.shape[-1])
@@ -454,8 +454,8 @@ class Distiller:
         
         #self.is_local_main_process = self.accelerator.is_local_main_process 
 
-        self.smaller_model.model = self.smaller_model.model.to(self.device)
-        self.larger_model.model = self.larger_model.model.to(self.device) 
+        #self.smaller_model.model = self.smaller_model.model.to(self.device)
+        #self.larger_model.model = self.larger_model.model.to(self.device) 
 
         self.larger_model.model, self.smaller_model.model, self.opt, self.loader= self.accelerator.prepare(
             self.larger_model.model, self.smaller_model.model, self.opt, self.loader
@@ -941,7 +941,7 @@ class Distiller:
         stop_batch = self.train_max_batch
         accumulated_loss = 0.0
 
-        #self.larger_model.model.to(self.device)
+        #self.larger_model.model:self.device)
         #self.smaller_model.model.to(self.device)
 
         # Need to revise (Can run on 1 GPU under the following settings)
@@ -983,7 +983,7 @@ class Distiller:
             #    break
             self.step = i + 1
 
-            batch = batch.to(self.device)
+            #batch = batch.to(self.device)
             x, y = batch[:, :-1], batch[:, 1:]
             #output_large = self.larger_model.forward(x)
            
