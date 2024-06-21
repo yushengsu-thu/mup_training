@@ -119,7 +119,7 @@ class LargerModel:
         self.batch_size = parser.batch_size
         self.cache_dir = parser.cache_dir
         self.cpus = parser.cpus
-        self.device = parser.device
+        #self.device = parser.device
         self.target_dir = parser.target_dir
         self.revision = parser.revision
         self.distill_model_config = parser.distill_model_config
@@ -249,7 +249,7 @@ class SmallerModel:
         self.batch_size = parser.batch_size
         self.cache_dir = parser.cache_dir
         self.cpus = parser.cpus
-        self.device = parser.device
+        #self.device = parser.device
         self.target_dir = parser.target_dir
         self.revision = parser.revision
         self.distill_model_config = parser.distill_model_config
@@ -365,7 +365,7 @@ class Distiller:
         self.batch_size = parser.batch_size
         self.cache_dir = parser.cache_dir
         self.cpus = parser.cpus
-        self.device = parser.device
+        #self.device = parser.device
         self.target_dir = parser.target_dir
         self.revision = parser.revision
         self.distill_model_config = parser.distill_model_config
@@ -417,18 +417,6 @@ class Distiller:
         '''
 
         self.opt = optim.AdamW(self.smaller_model.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-        #update the larger llm and smaller llm
-        # This creates a list of all parameters by iterating over both parameter generators
-        #params = list(self.smaller_model.model.parameters()) + list(self.larger_model.model.parameters())
-        #self.opt = optim.AdamW(params, lr=self.learning_rate, weight_decay=self.weight_decay)
-
-        #from itertools import chain
-        #self.opt = optim.AdamW(chain(self.smaller_model.model.parameters(), self.larger_model.model.parameters()), lr=self.learning_rate, weight_decay=self.weight_decay)
-
-
-        #self.distill_model = torch.compile(distill_model)
-        #optimizer = optim.AdamW(self.smaller_model.parameters(), lr=self.learning_rate, weight_decay=parser.weight_decay)
-        # Add seduchler
 
         ###
         '''
@@ -449,13 +437,6 @@ class Distiller:
         ###
 
 
-        # with open(self.training_config_dir, 'r') as training_config_file:
-        #     training_config = yaml.safe_load(training_config_file)
-        # training_config = FullyShardedDataParallelPlugin(**training_config) 
-        # # the param in FullyShardedDataParallelPlugin:
-        # acceptable_params = inspect.signature(FullyShardedDataParallelPlugin.__init__).parameters
-        # training_config = {key: value for key, value in training_config.items() if key in acceptable_params}
-        
         training_config = self.load_and_filter_config(self.training_config_dir)
         training_plugin = FullyShardedDataParallelPlugin(**training_config)
          
@@ -468,10 +449,13 @@ class Distiller:
             #megatron_lm_plugin = ,
             #deepspeed_plugin = ,
         )
+        self.device = self.accelerator.device
 
         
         #self.is_local_main_process = self.accelerator.is_local_main_process 
 
+        self.smaller_model = self.smaller_model.to(self.device)
+        self.larger_model = self.larger_model.to(self.device) 
 
         self.larger_model, self.smaller_model, self.opt, self.loader= self.accelerator.prepare(
             self.larger_model, self.smaller_model, self.opt, self.loader
@@ -999,6 +983,7 @@ class Distiller:
             #    break
             self.step = i + 1
 
+            batch = batch.to(self.device)
             x, y = batch[:, :-1], batch[:, 1:]
             #output_large = self.larger_model.forward(x)
            

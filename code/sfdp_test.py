@@ -1,60 +1,54 @@
-# train_model.py
-
 import torch
-from torch import nn, optim
-from torch.utils.data import DataLoader, TensorDataset
+#from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from accelerate import Accelerator
-import numpy as np
+import torch.nn.functional as F
 
-# Create a simple dataset
-x = np.random.rand(1000, 10).astype(np.float32)
-y = np.random.randint(0, 2, size=(1000, 1)).astype(np.float32)
-dataset = TensorDataset(torch.from_numpy(x), torch.from_numpy(y))
-dataloader = DataLoader(dataset, batch_size=128, shuffle=True)  # Increased batch size
-
-# Define a simple neural network with dropout for sfdp
-class NeuralNetwork(nn.Module):
-    def __init__(self):
-        super(NeuralNetwork, self).__init__()
-        self.linear1 = nn.Linear(10, 50)
-        self.dropout = nn.Dropout(0.5)  # Sparse fast dropout simulation
-        self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(50, 1)
-
-    def forward(self, x):
-        x = self.linear1(x)
-        x = self.dropout(x)
-        x = self.relu(x)
-        x = self.linear2(x)
-        return x
-
-# Initialize the model, loss, and optimizer
-model = NeuralNetwork()
-loss_fn = nn.BCEWithLogitsLoss()
-optimizer = optim.Adam(model.parameters())
-
-# Initialize Accelerator
+# 使用 Accelerator 初始化 FSDP
+#accelerator = Accelerator(fp16=True, split_batches=True)
 accelerator = Accelerator()
-model, optimizer, dataloader = accelerator.prepare(model, optimizer, dataloader)
+device = accelerator.device
+#model = accelerator.prepare_model(model)
 
-# Training loop
-def train(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
-    for batch, (X, y) in enumerate(dataloader):
-        # Compute prediction and loss
-        pred = model(X)
-        loss = loss_fn(pred, y)
+# 加载预训练模型和分词器
+#tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+#model = AutoModel.from_pretrained('bert-base-uncased').to(device)
 
-        # Backpropagation
-        optimizer.zero_grad()
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+model = AutoModelForSequenceClassification.from_pretrained('bert-base-uncased').to(device)
+
+
+
+# 准备数据和训练逻辑
+def train(model, tokenizer, accelerator):
+    # 假设有一些训练数据和目标
+    inputs = tokenizer(["Hello, this is a test."], return_tensors="pt", padding=True, truncation=True)['input_ids'].to(accelerator.device)
+    labels = torch.LongTensor([1]).to(accelerator.device)  # 假设目标
+    data = (inputs, labels)
+
+    optimizer = torch.optim.Adam(model.parameters())
+
+    model, optimizer, data = accelerator.prepare(model, optimizer, data)
+
+    # 将数据移动到相应的设备
+    #inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
+    #labels = labels.to(accelerator.device)
+
+    # 训练模式
+    model.train()
+    for epoch in range(10):
+        print(f"training epoch {epoch}")
+        inputs, labels = data
+        outputs = model(inputs).logits
+        loss = F.cross_entropy(outputs, labels)
+
+        #loss.backward()
         accelerator.backward(loss)
+
+        # 更新模型参数
         optimizer.step()
+        optimizer.zero_grad()
 
-        if batch % 10 == 0:
-            loss, current = loss.item(), batch * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-
-# Run training
-train(dataloader, model, loss_fn, optimizer)
-print("Training completed")
+# 训练模型
+train(model, tokenizer, accelerator)
 

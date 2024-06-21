@@ -1,5 +1,7 @@
 #!/bin/bash
 
 # Run the training script with Accelerate
-accelerate launch ../code/train_model.py
+accelerate launch ../code/sfdp_test.py
+
+#python3 ../code/sfdp_test.py
 
