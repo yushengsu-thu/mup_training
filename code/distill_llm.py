@@ -457,8 +457,13 @@ class Distiller:
         #self.smaller_model.model = self.smaller_model.model.to(self.device)
         #self.larger_model.model = self.larger_model.model.to(self.device) 
 
+        '''
         self.larger_model.model, self.smaller_model.model, self.opt, self.loader= self.accelerator.prepare(
             self.larger_model.model, self.smaller_model.model, self.opt, self.loader
+        )
+        '''
+        self.larger_model, self.smaller_model, self.opt, self.loader= self.accelerator.prepare(
+            self.larger_model, self.smaller_model, self.opt, self.loader
         )
 
         #### Show paprameters:
@@ -941,14 +946,14 @@ class Distiller:
         stop_batch = self.train_max_batch
         accumulated_loss = 0.0
 
-        #self.larger_model.model:self.device)
-        #self.smaller_model.model.to(self.device)
+        self.larger_model.model.to(self.device)
+        self.smaller_model.model.to(self.device)
 
         # Need to revise (Can run on 1 GPU under the following settings)
         # half: fp16
         ######
-        self.larger_model.model.half()
-        self.smaller_model.model.half()
+        #self.larger_model.model.half()
+        #self.smaller_model.model.half()
 
         self.larger_model.model.eval()
         # self.larger_model.model.train()
@@ -973,6 +978,10 @@ class Distiller:
         #loss_3 --> hidden state difference
         total_loss = 0
         for i, batch in enumerate(prog):
+
+            if self.accelerator.is_local_main_process:
+                print(f"ith: {i}: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
             loss = 0
             self.smaller_backward_loss = 0
             self.smaller_forward_loss = 0
@@ -983,7 +992,7 @@ class Distiller:
             #    break
             self.step = i + 1
 
-            #batch = batch.to(self.device)
+            batch = batch.to(self.device)
             x, y = batch[:, :-1], batch[:, 1:]
             #output_large = self.larger_model.forward(x)
            
