@@ -60,7 +60,7 @@ class DatasetWrapper(IterableDataset):
                 cache_dir=self.cache_dir
         )
         '''
-        self.dataset = load_dataset("cerebras/SlimPajama-627B",
+        self.dataset = load_dataset("iankur/SlimPajama-1B",
                 split="train",
                 cache_dir=self.cache_dir
         )
