@@ -981,6 +981,9 @@ class Distiller:
 
             if self.accelerator.is_local_main_process:
                 print(f"ith: {i}: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                print(f"1st: {torch.cuda.memory_summary(device=None, abbreviated=False)}")
+                torch.cuda.empty_cache()
+                print(f"2nd: {torch.cuda.memory_summary(device=None, abbreviated=False)}")
 
             loss = 0
             self.smaller_backward_loss = 0

@@ -1,4 +1,5 @@
 #!/bin/bash
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Activate the virtual environment if you have one
 # source /path/to/your/venv/bin/activate
