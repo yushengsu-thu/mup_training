@@ -358,7 +358,7 @@ class Distiller:
         #self.max_tokens = 2**13
         self.llm = parser.llm
         self.max_tokens = parser.max_tokens
-        self.grad = 64
+        self.grad_step = parser.grad_step
         self.step = 0
         self.learning_rate = parser.learning_rate
         self.weight_decay = parser.weight_decay
@@ -442,7 +442,7 @@ class Distiller:
          
         # I can change to fsdp
         self.accelerator = Accelerator(
-            gradient_accumulation_steps=self.grad,
+            gradient_accumulation_steps=self.grad_step,
             #mixed_precision = 'fp8',
             mixed_precision = 'bf16',
             fsdp_plugin = training_plugin,
@@ -515,7 +515,8 @@ class Distiller:
         #if self.rank == 0:
         #if self.is_local_main_process:
         if self.accelerator.is_local_main_process:
-            print("======Model Para=========")
+            print()
+            print("=============Model Para================")
             params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             emb_params = list(model.transformer.wte.parameters())
             emb_params += list(model.lm_head.parameters())
@@ -524,7 +525,7 @@ class Distiller:
             print("Params:", params - emb_params)
             print("Params (incl. embeddings):", params)
             print("Trainable params:", trainable_params)
-            print("===========================")
+            print("========================================")
 
         '''
         return CausalLMOutputWithCrossAttentions(
@@ -952,12 +953,10 @@ class Distiller:
         # Need to revise (Can run on 1 GPU under the following settings)
         # half: fp16
         ######
-        #self.larger_model.model.half()
-        #self.smaller_model.model.half()
+        self.larger_model.model.half()
+        self.smaller_model.model.half()
 
         self.larger_model.model.eval()
-        # self.larger_model.model.train()
-        # self.set_requires_grad(self.larger_model.model, False)
         self.smaller_model.model.train()
         ######
 
@@ -979,17 +978,16 @@ class Distiller:
         total_loss = 0
         for i, batch in enumerate(prog):
 
-            if self.accelerator.is_local_main_process:
-                print(f"ith: {i}: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                print(f"1st: {torch.cuda.memory_summary(device=None, abbreviated=False)}")
-                torch.cuda.empty_cache()
-                print(f"2nd: {torch.cuda.memory_summary(device=None, abbreviated=False)}")
+            # if self.accelerator.is_local_main_process:
+            #     print(f"ith: {i}: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            #     print(f"1st: {torch.cuda.memory_summary(device=None, abbreviated=False)}")
+            #     torch.cuda.empty_cache()
+            #     print(f"2nd: {torch.cuda.memory_summary(device=None, abbreviated=False)}")
 
             loss = 0
             self.smaller_backward_loss = 0
             self.smaller_forward_loss = 0
             
-            self.opt.zero_grad()
 
             #if i == stop_batch:
             #    break
@@ -1094,28 +1092,32 @@ class Distiller:
             
 
             ###start from here: 
-            smaller_hidden_states, smaller_logits_loss = self.larger_model.forward_and_loss(x, y, True)
+            smaller_hidden_states, smaller_logits_loss = self.smaller_model.forward_and_loss(x, y, False)
             #with torch.no_grad():
-            #    larger_hidden_states, larger_logits_loss = self.smaller_model.forward_and_loss(x, y, True)
+            larger_hidden_states, larger_logits_loss = self.larger_model.forward_and_loss(x, y, False)
             #### layer-wise loss
             #layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
             #### logits loss
-            #logits_loss = self.logits_loss(larger_hidden_states, smaller_hidden_states)
+            logits_loss = self.logits_loss(larger_hidden_states, smaller_hidden_states)
 
-            #loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
-            loss += smaller_logits_loss #logits_loss #+ layerwise_hidden_loss 
+            #loss += smaller_logits_loss #+logits_loss + layerwise_hidden_loss 
+            loss += smaller_logits_loss + logits_loss #+ layerwise_hidden_loss 
             #print(f"loss: {loss}, rank: {self.rank}")
 
             #import pdb; pdb.set_trace() 
              
  
             #accumulated_loss += loss_2.item()
-            total_loss += loss.item()
+            #total_loss += loss.item()
+            total_loss += loss
             #if self.rank == 0:
             #if self.is_local_main_process:
+            
             if self.accelerator.is_local_main_process:
-                prog.set_description(f"loss: {loss.item():.3f}")
-                prog.set_description(f"total_loss: {total_loss/self.step:.3f}")
+                prog.set_description(f"Current loss: {loss.item():.3f}")
+            if self.step%self.grad_step:
+                prog.set_description(f"Average total_loss: {total_loss.item()/self.step:.3f}")
+
             '''
             wandb.log(
                 {
@@ -1133,7 +1135,12 @@ class Distiller:
             #torch.nn.utils.clip_grad_value_(self.smaller_model.model.parameters(), clip_value=5.0)
             #torch.nn.utils.clip_grad_value_(self.smaller_model.model.parameters(), clip_value=1.0)
             #self.accelerator.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
-            self.opt.step()
+
+            ### Already set in line 445: gradient_accumulation_steps=self.grad_step
+            # if self.step%self.grad_step == 0:
+            #     self.opt.step()
+            #     self.opt.zero_grad()
+
 
             continue
 
