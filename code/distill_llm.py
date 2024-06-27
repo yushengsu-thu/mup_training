@@ -81,10 +81,16 @@ class DatasetWrapper(IterableDataset):
         self.max_tokens = max_tokens
         self.cache_dir = cache_dir
         # pre-load the dataset --> pre-training data needed: 
-        self.dataset = load_dataset("Open-Orca/SlimOrca-Dedup",
-                split="train",
-                cache_dir=self.cache_dir
+        # self.dataset = load_dataset("Open-Orca/SlimOrca-Dedup",
+        #         split="train",
+        #         cache_dir=self.cache_dir
+        # )
+        ###########
+        self.dataset = load_dataset("iankur/SlimPajama-1B",
+            split="train",
+            cache_dir=self.cache_dir
         )
+        ###########
         self.train_size = int(0.9 * len(self.dataset))
         self.eval_size = len(self.dataset) - self.train_size
     def __train_size__(self):
@@ -92,18 +98,32 @@ class DatasetWrapper(IterableDataset):
     def __eval_size__(self):
         return self.eval_size
 
+    # #### Instruction Tuning ########
+    # def __iter__(self):
+    #     # 90%: train, 10%: test
+    #     train_dataset = self.dataset.select(range(self.train_size))
+    #     valid_dataset = self.dataset.select(range(self.train_size, len(self.dataset)))
+    #     self.tokenizer.pad_token = self.tokenizer.eos_token
+    #     #for sample in train_dataset:
+    #     for sample in valid_dataset:
+    #         instruction_system = sample['conversations'][0]["value"]
+    #         instruction_human = sample['conversations'][1]["value"]
+    #         response = sample['conversations'][2]["value"]
+    #         input_ = instruction_system + "\n" + instruction_human + "\n" + response
+    #         tokens = self.tokenizer(input_, return_tensors='pt', max_length=self.max_tokens, padding="max_length", truncation=True).input_ids
+    #         tokens = tokens.reshape(tokens.shape[0]*tokens.shape[1])
+    #         yield tokens
+
+    
+    # #### Pre-training ########
     def __iter__(self):
         # 90%: train, 10%: test
         train_dataset = self.dataset.select(range(self.train_size))
         valid_dataset = self.dataset.select(range(self.train_size, len(self.dataset)))
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        #for sample in train_dataset:
         for sample in valid_dataset:
-            instruction_system = sample['conversations'][0]["value"]
-            instruction_human = sample['conversations'][1]["value"]
-            response = sample['conversations'][2]["value"]
-            input_ = instruction_system + "\n" + instruction_human + "\n" + response
-            tokens = self.tokenizer(input_, return_tensors='pt', max_length=self.max_tokens, padding="max_length", truncation=True).input_ids
+            tokens = sample['text']
+            tokens = self.tokenizer(tokens, return_tensors='pt', max_length=self.max_tokens, padding="max_length", truncation=True).input_ids
             tokens = tokens.reshape(tokens.shape[0]*tokens.shape[1])
             yield tokens
 
@@ -918,22 +938,24 @@ class Distiller:
         
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
-        target_log = "../log/distill_loss"
-        if os.path.isdir(target_log+"/wandb"):
-            # delete dir
-            shutil.rmtree(target_log+"/wandb")
-        #create a new one
-        os.makedirs(target_log+"/wandb")
-        
-        wandb.init(
-            project=PROJECT,
-            entity=ENTITY,
-            #notes=socket.gethostname(),
-            name="training_log",
-            dir=target_log,
-            job_type="training",
-            reinit=True
-        )
+
+        if self.accelerator.is_local_main_process:
+            target_log = "../log/distill_loss"
+            if os.path.isdir(target_log+"/wandb"):
+                # delete dir
+                shutil.rmtree(target_log+"/wandb")
+            #create a new one
+            os.makedirs(target_log+"/wandb")
+            
+            wandb.init(
+                project=PROJECT,
+                entity=ENTITY,
+                #notes=socket.gethostname(),
+                name="training_log",
+                dir=target_log,
+                job_type="training",
+                reinit=True
+            )
 
         prog = tqdm(self.loader)
         #self.opt.zero_grad()
@@ -1112,18 +1134,19 @@ class Distiller:
             
             if self.accelerator.is_local_main_process:
                 prog.set_description(f"current loss: {loss.item():.3f}")
+
+                wandb.log(
+                    {
+                        "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
+                        "logits_loss": logits_loss.item(),
+                        "current loss": loss.item(),
+                        "average total_loss": total_loss.item()/self.step,
+                    },
+                    step=i,
+                )
+
             if self.step%self.grad_step:
                 prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
-
-            wandb.log(
-                {
-                    "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
-                    "logits_loss": logits_loss.item(),
-                    "current loss": loss.item(),
-                    "average total_loss": total_loss.item()/self.step,
-                },
-                step=i,
-            )
 
             #### Do not deelete
             self.accelerator.backward(loss)

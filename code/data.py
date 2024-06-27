@@ -37,7 +37,6 @@ from torch.distributions import Normal, kl_divergence
 import re
 
 
-
 class DatasetWrapper(IterableDataset):
     def __init__(self, max_tokens, cache_dir):
         ###
@@ -50,6 +49,10 @@ class DatasetWrapper(IterableDataset):
             revision="CrystalCoder_phase1_checkpoint_055500",
             trust_remote_code=True
         )
+
+        # import pdb; pdb.set_trace() 
+        # exit()
+        
         self.max_tokens = max_tokens
         self.cache_dir = cache_dir
         # pre-load the dataset --> pre-training data needed:
@@ -64,14 +67,39 @@ class DatasetWrapper(IterableDataset):
                 split="train",
                 cache_dir=self.cache_dir
         )
-        ####
+        # self.dataset = load_dataset("LLM360/CrystalCoderDatasets",
+        #         split="train",
+        #         cache_dir=self.cache_dir
+        # )
+        # ####
         #self.train_size = int(0.9 * len(self.dataset))
-        self.train_size = int(0.01 * len(self.dataset))
+        #self.train_size = int(0.01 * len(self.dataset))
+        self.train_size = int(0.9 * len(self.dataset))
         self.eval_size = len(self.dataset) - self.train_size
+
+        ########
+        ##################
+        
     def __train_size__(self):
         return self.train_size
     def __eval_size__(self):
         return self.eval_size
+
+    # def __iter__(self):
+    #     # 90%: train, 10%: test
+    #     train_dataset = self.dataset.select(range(self.train_size))
+    #     valid_dataset = self.dataset.select(range(self.train_size, len(self.dataset)))
+    #     self.tokenizer.pad_token = self.tokenizer.eos_token
+    #     #for sample in train_dataset:
+    #     for sample in valid_dataset:
+    #         print(sample)
+    #         instruction_system = sample['conversations'][0]["value"]
+    #         instruction_human = sample['conversations'][1]["value"]
+    #         response = sample['conversations'][2]["value"]
+    #         input_ = instruction_system + "\n" + instruction_human + "\n" + response
+    #         tokens = self.tokenizer(input_, return_tensors='pt', max_length=self.max_tokens, padding="max_length", truncation=True).input_ids
+    #         tokens = tokens.reshape(tokens.shape[0]*tokens.shape[1])
+    #         yield tokens
 
     def __iter__(self):
         # 90%: train, 10%: test
@@ -80,13 +108,11 @@ class DatasetWrapper(IterableDataset):
         self.tokenizer.pad_token = self.tokenizer.eos_token
         #for sample in train_dataset:
         for sample in valid_dataset:
-            print(sample)
-            instruction_system = sample['conversations'][0]["value"]
-            instruction_human = sample['conversations'][1]["value"]
-            response = sample['conversations'][2]["value"]
-            input_ = instruction_system + "\n" + instruction_human + "\n" + response
-            tokens = self.tokenizer(input_, return_tensors='pt', max_length=self.max_tokens, padding="max_length", truncation=True).input_ids
+            #print(sample)
+            tokens = sample['text']
+            tokens = self.tokenizer(tokens, return_tensors='pt', max_length=self.max_tokens, padding="max_length", truncation=True).input_ids
             tokens = tokens.reshape(tokens.shape[0]*tokens.shape[1])
+            #print(tokens)
             yield tokens
 
 
@@ -118,12 +144,15 @@ loader = DataLoader(
     num_workers=args.cpus,
 )
 
-#print(loader)
-#exit()
+prog = tqdm(loader)
 
-for i, batch in enumerate(dataset):
+for i, batch in enumerate(prog):
     if i == 10:
         break
+    x, y = batch[:, :-1], batch[:, 1:]
     print(batch)
+    print(x)
+    print(y)
+    print("=====")
 
 

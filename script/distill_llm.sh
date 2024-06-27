@@ -21,7 +21,7 @@ accelerate launch ../code/distill_llm.py \
     --max_tokens 2048 \
     --learning_rate 3e-5 \
     --weight_decay 0 \
-    --batch_size 2 \
+    --batch_size 1 \
     --revision $VERSION \
     --grad_step 64 \
     --target_dir "../checkpoint/EleutherAI/"$LLM \
