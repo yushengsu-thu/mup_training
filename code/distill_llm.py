@@ -1142,7 +1142,7 @@ class Distiller:
                     {
                         "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
                         "logits_loss": logits_loss.item(),
-                        "layerwise_hidden_loss ": layerwise_hidden_loss.item(),
+                        "layerwise_hidden_loss": layerwise_hidden_loss.item(),
                         "current loss": loss.item(),
                         "average total_loss": total_loss.item()/self.step,
                     },
