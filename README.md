@@ -34,7 +34,7 @@ CUDA_VISIBLE_DEVICES=1 python3 ../code/analysis_wordlevel.py \
 `--num_of_samples` is the number of statistical samples 
 
 
-## Fine-tune LLms
+## Fine-tune LLMs
 ```bash
 cd script
 
@@ -49,3 +49,14 @@ bash finetune_llm.sh
 - Word: [Link](https://docs.google.com/document/d/1xnVAxbPtNVtDTSyxQsH3j9AopDdHloKiUFnTRxKhZ7E/edit)
 
 - PPT: [Link](https://docs.google.com/presentation/d/12wfyTp1oWu2-D4IBylY620DUuuzOrwWdqdsL4bGZgW4/edit#slide=id.g2c1a302799d_0_90)
+
+
+
+## Mup: Downsampling and Training
+Excute `bash` and follow the instruction to set the training config and run
+```bash
+bash run.sh
+```
+You can find the training log here:
+- wandb: ⭐️ View project: `https://wandb.ai/mbzuai-llm/mup_training`
+- wandb: 🚀 View run: `https://wandb.ai/mbzuai-llm/mup_training/runs/vf4fubed`

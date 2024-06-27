@@ -624,7 +624,7 @@ class Distiller:
 
         mean_loss = self.compute_mean_loss(large_hidden_states, small_hidden_states)
         std_loss = self.compute_std_loss(large_hidden_states, small_hidden_states)
-        print(f"mean_loss: {mean_loss}, std_loss: {std_loss}")
+        #print(f"mean_loss: {mean_loss}, std_loss: {std_loss}")
         
         loss = mean_loss + std_loss
         return loss
@@ -972,8 +972,8 @@ class Distiller:
         # Need to revise (Can run on 1 GPU under the following settings)
         # half: fp16
         ######
-        self.larger_model.model.half()
-        self.smaller_model.model.half()
+        #self.larger_model.model.half()
+        #self.smaller_model.model.half()
 
         self.larger_model.model.eval()
         self.smaller_model.model.train()
@@ -1111,16 +1111,18 @@ class Distiller:
             
 
             ###start from here: 
-            smaller_hidden_states, smaller_autoregressive_loss = self.smaller_model.forward_and_loss(x, y, False)
-            #with torch.no_grad():
-            larger_hidden_states, larger_autoregressive_loss = self.larger_model.forward_and_loss(x, y, False)
+            smaller_hidden_states, smaller_autoregressive_loss = self.smaller_model.forward_and_loss(x, y, True)
+            with torch.no_grad():
+                # Since we do not require gradient calculations or parameter updates for self.larger_model,
+                # operations are wrapped in torch.no_grad() to improve performance and reduce memory usage.
+                larger_hidden_states, larger_autoregressive_loss = self.larger_model.forward_and_loss(x, y, True)
             #### layer-wise loss
-            #layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
+            layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
             #### logits loss
             logits_loss = self.logits_loss(larger_hidden_states, smaller_hidden_states)
 
             #loss += smaller_logits_loss #+logits_loss + layerwise_hidden_loss 
-            loss += smaller_autoregressive_loss + logits_loss #+ layerwise_hidden_loss 
+            loss += smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
             #print(f"loss: {loss}, rank: {self.rank}")
 
             #import pdb; pdb.set_trace() 
@@ -1134,11 +1136,13 @@ class Distiller:
             
             if self.accelerator.is_local_main_process:
                 prog.set_description(f"current loss: {loss.item():.3f}")
+                #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
 
                 wandb.log(
                     {
                         "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
                         "logits_loss": logits_loss.item(),
+                        "layerwise_hidden_loss ": layerwise_hidden_loss.item(),
                         "current loss": loss.item(),
                         "average total_loss": total_loss.item()/self.step,
                     },
@@ -1192,7 +1196,7 @@ def main():
     parser.add_argument('--distill_model_config', type=str, default = "", help='distill_model_config')
     parser.add_argument('--grad_step', type=int, default=64, help='grad steps')
     parser.add_argument('--reduction_factor', type=int, default=4, help='reduction_factor')
-    parser.add_argument('--training_config_dir', type=str, default=os.getcwd()+"/../config/default_config_fsdp.yaml", help='training_config_dir')
+    parser.add_argument('--training_config_dir', type=str, default=os.getcwd()+"/../config/default_config.yaml", help='training_config')
 
     #parser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

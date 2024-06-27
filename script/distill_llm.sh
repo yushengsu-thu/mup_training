@@ -27,7 +27,10 @@ accelerate launch ../code/distill_llm.py \
     --target_dir "../checkpoint/EleutherAI/"$LLM \
     --reduction_factor 4 \
     --distill_model_config "../distill-crystalcoder-config" \
-    --training_config_dir "../config/default_config_fsdp.yaml" \
+    --training_config_dir "../config/default_config.yaml" \
+
+
+    #--training_config_dir "../config/default_config_fsdp.yaml" \
 
 
 # grad_step default:64 --> so the actual batch_size can be seen as 1*64
