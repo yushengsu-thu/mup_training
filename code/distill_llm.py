@@ -172,11 +172,11 @@ class LargerModel:
     
     def logit_and_loss(self, x, y, output_hidden_states):
         #x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=output_hidden_states).logits
+        z = self.model(x, output_hidden_states=output_hidden_states)
         y = y.reshape(-1)
         y_prime = z.logits.view(-1, z.logits.shape[-1])
         loss = F.cross_entropy(y_prime, y)
-        return z, loss
+        return z.logits, loss
     
 
 # 1 D
@@ -383,11 +383,11 @@ class SmallerModel:
 
     def logit_and_loss(self, x, y, output_hidden_states):
         #x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=output_hidden_states).logits
+        z = self.model(x, output_hidden_states=output_hidden_states)
         y = y.reshape(-1)
         y_prime = z.logits.view(-1, z.logits.shape[-1])
         loss = F.cross_entropy(y_prime, y)
-        return z, loss
+        return z.logits, loss
 
 
 class Distiller:
@@ -1203,15 +1203,22 @@ class Distiller:
             
 
             ###start from here: 
-            smaller_logit, smaller_autoregressive_loss = self.smaller_model.logit_and_loss(x, y, True)
             with torch.no_grad():
                 # Since we do not require gradient calculations or parameter updates for self.larger_model,
                 # operations are wrapped in torch.no_grad() to improve performance and reduce memory usage.
+                self.register_forward_hook(self.larger_model.model, "larger", False)
                 larger_logit, larger_autoregressive_loss = self.larger_model.logit_and_loss(x, y, True)
+            
+            print(self.larger_hook_forward_dict)
+            
+            exit()
+             
             #### layer-wise loss
             #layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
             #### forward layer loss
             
+            smaller_logit, smaller_autoregressive_loss = self.smaller_model.logit_and_loss(x, y, True)
+
             #### logits loss
             logits_loss = self.logits_loss(larger_logit, smaller_logit)
 
@@ -1229,25 +1236,32 @@ class Distiller:
             #if self.rank == 0:
             #if self.is_local_main_process:
            
-            # #!!! 
-            # if self.accelerator.is_local_main_process:
-            #     prog.set_description(f"current loss: {loss.item():.3f}")
-            #     #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
+            if self.accelerator.is_local_main_process:
+                prog.set_description(f"current loss: {loss.item():.3f}")
+                #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
 
-            #     wandb.log(
-            #         {
-            #             "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
-            #             "logits_loss": logits_loss.item(),
-            #             "layerwise_hidden_loss": layerwise_hidden_loss.item(),
-            #             "current loss": loss.item(),
-            #             "average total_loss": total_loss.item()/self.step,
-            #         },
-            #         step=i,
-            #     )
+                # wandb.log(
+                #     {
+                #         "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
+                #         "logits_loss": logits_loss.item(),
+                #         "layerwise_hidden_loss": layerwise_hidden_loss.item(),
+                #         "current loss": loss.item(),
+                #         "average total_loss": total_loss.item()/self.step,
+                #     },
+                #     step=i,
+                # )
 
-            # if self.step%self.grad_step:
-            #     prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
-            # #!!! 
+
+                wandb.log(
+                    {
+                        "total_loss": total_loss.item()/self.step,
+                    },
+                    step=i,
+                )
+                
+
+            if self.step%self.grad_step:
+                prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
 
             #### Do not deelete
             self.accelerator.backward(loss)
