@@ -149,30 +149,19 @@ class LargerModel:
             cache_dir = self.cache_dir,
             trust_remote_code=True
         )
-
     def forward(self, x, output_hidden_states):
         #x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=output_hidden_states)
         return z
-
     def next_token_prediction_loss(self, x, y):
         z = self.model(x).logits
         y = y.reshape(-1)
         z = z.view(-1, z.shape[-1])
         loss = F.cross_entropy(z, y)
         return loss
-
-    def hidden_and_loss(self, x, y, output_hidden_states):
+    def forward_and_loss(self, x, y, output_hidden_states):
         #x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=output_hidden_states)
-        y = y.reshape(-1)
-        y_prime = z.logits.view(-1, z.logits.shape[-1])
-        loss = F.cross_entropy(y_prime, y)
-        return z, loss
-    
-    def logit_and_loss(self, x, y, output_hidden_states):
-        #x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=output_hidden_states).logits
         y = y.reshape(-1)
         y_prime = z.logits.view(-1, z.logits.shape[-1])
         loss = F.cross_entropy(y_prime, y)
@@ -373,17 +362,9 @@ class SmallerModel:
         #return clipped_loss
         return loss
 
-    def hidden_and_loss(self, x, y, output_hidden_states):
+    def forward_and_loss(self, x, y, output_hidden_states):
         #x = x.to(self.model.device)
         z = self.model(x, output_hidden_states=output_hidden_states)
-        y = y.reshape(-1)
-        y_prime = z.logits.view(-1, z.logits.shape[-1])
-        loss = F.cross_entropy(y_prime, y)
-        return z, loss
-
-    def logit_and_loss(self, x, y, output_hidden_states):
-        #x = x.to(self.model.device)
-        z = self.model(x, output_hidden_states=output_hidden_states).logits
         y = y.reshape(-1)
         y_prime = z.logits.view(-1, z.logits.shape[-1])
         loss = F.cross_entropy(y_prime, y)
@@ -648,10 +629,10 @@ class Distiller:
         loss = mean_loss + std_loss
         return loss
 
-    def logits_loss(self, large_logit, small_logit):
-        #large_logits = output_large.logits
-        #small_logits = output_small.logits
-        loss = self.caculate_loss(large_logit, small_logit)
+    def logits_loss(self, output_large, output_small):
+        large_logits = output_large.logits
+        small_logits = output_small.logits
+        loss = self.caculate_loss(large_logits, small_logits)
         return loss
 
     def caculate_loss(self, y_prime, y):
@@ -953,80 +934,8 @@ class Distiller:
     def set_requires_grad(self, model, value):
         for name, param in model.named_parameters():
             param.requires_grad = value
-    
-    
-    def _forward_hook(self, module_name, model_name, is_before):
-            if model_name == "smaller":
-                def f_hook(module, input, output, is_before=is_before):
-                    # if input[0] == None or module_name == "transformer.wte" or module_name == "transformer" or module_name == "":
-                    #     is_before = False
-                    # elif "transformer.drop" in module_name or ".ln_1" in module_name or ".c_proj" in module_name or ".attn_dropout" in module_name:
-                    #     is_before = False 
-                    # elif re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.attn$", module_name) or re.match(r"transformer\.h\.(?:[0-3][0-9]{0,2}|32)\.mlp$", module_name):
-                    #     is_before = False
-                    #####
-                    if is_before:
-                        self.smaller_hook_forward_dict[module_name] = input 
-                        modified_output = self.larger_hook_forward_dict[module_name]
-                        
-                        if input[0] == None:
-                            #return output
-                            pass
-                        elif len(modified_output) == 1:
-                            output_copy = output.clone() 
-                            output.data = _subsample_embeddings_dimlast(modified_output, output, self.smaller_model.reduction_factor)   
-                            #return output
-                        else:
-                            '''
-                            output: len == 2, 
-                            - (1) <class 'torch.Tensor'> 
-                            - (2) <class 'tuple'>: (<class 'torch.Tensor'>, <class 'torch.Tensor'>)
-                            '''
-                            temp_list = []
-                            for idx in range(0, len(modified_output)): 
-                                if modified_output[idx] == None:
-                                    #temp_list.append(None)
-                                    output[idx] = None
-                                elif len(modified_output[idx]) == 1 and isinstance(modified_output[idx], torch.Tensor): 
-                                    #temp_list.append(_subsample_embeddings_dimlast(modified_output[idx], output[idx], self.smaller_model.reduction_factor)) 
-                                    output[idx].data = _subsample_embeddings_dimlast(modified_output[idx], output[idx], self.smaller_model.reduction_factor) 
-                                elif len(modified_output[idx]) > 1 and isinstance(modified_output[idx], tuple):
-                                    for idxx in range(0, len(modified_output[idx])): 
-                                        #temp_list_inner.append(_subsample_embeddings_dimlast(modified_output[idx][idxx], output[idx][idxx], self.smaller_model.reduction_factor)) 
-                                        output[idx][idxx].data = _subsample_embeddings_dimlast(modified_output[idx][idxx], output[idx][idxx], self.smaller_model.reduction_factor) 
-                        return output
-                    else:    
-                        self.smaller_hook_forward_dict[module_name] = input 
-                        return output 
-                return f_hook
-            
-            elif model_name == "larger":
-                def f_hook(module, input, output):
-                    self.larger_hook_forward_dict[module_name] = output
-                return f_hook
-            else:
-                raise ValueError(f"Error file: distill_llm.py, Invalid number: line 491+-")
         
         
-        
-        
-        
-         
-    
-    def register_forward_hook(self, model, model_name, is_modifiy):
-        #if hook_type == "forward":
-        #for module_name, module in model.named_parameters():
-        total_hook_list = []
-        for module_name, module in model.named_modules():
-            hook = module.register_forward_hook(self._forward_hook(module_name, model_name, is_modifiy))
-            total_hook_list.append(hook)
-        if model_name == "smaller":
-            self.smaller_forward_hook_list = total_hook_list
-        elif model_name == "larger":
-            self.larger_forward_hook_list = total_hook_list
-        else:
-            raise ValueError(f"Error file: distill_llm.py, Invalid number: line 567+-")
-         
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
 
@@ -1164,11 +1073,10 @@ class Distiller:
             # print(f"self.smaller_forward_loss: {self.smaller_forward_loss}")
             # loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
 
-            # #Forward_pass: Keep this one 
+            # Forward_pass: Keep this one 
             # ############# (Problem: loss becomes larger? from 0 to inf ?? why?)
             # ###Forwardward loss###: smaller_model_next_token_prediction_loss (o), self.smaller_forward_loss (..) 
             # # collect normal larger's forward 
-            # self.smaller_forward_loss = 0
             # self.register_hook(self.larger_model.model, "larger", "forward", False, False)
             # larger_model_hidden_state = self.larger_model.forward(x, True)
             # # collect downsample forwardward grad (with larger's downsampled)
@@ -1180,14 +1088,14 @@ class Distiller:
             # # collect normal smaller's backward grad and get the next_token_prediction_loss
             # self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
             # smaller_model_hidden_state = self.smaller_model.forward(x, True)
-            # #print("======")
+            # print("======")
             # #smaller_model_next_token_prediction_loss.backward()
             # self.smaller_hook_forward_dict.clear()
             # self.remove_hook(self.smaller_forward_hook_list)
             # ## loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
             # print(f"smaller_forward_loss: {self.smaller_forward_loss}")
             # loss += self.smaller_forward_loss
-            #############
+            # #############
             
 
             # #logits loss : logits_loss (..) 
@@ -1203,21 +1111,18 @@ class Distiller:
             
 
             ###start from here: 
-            smaller_logit, smaller_autoregressive_loss = self.smaller_model.logit_and_loss(x, y, True)
+            smaller_hidden_states, smaller_autoregressive_loss = self.smaller_model.forward_and_loss(x, y, True)
             with torch.no_grad():
                 # Since we do not require gradient calculations or parameter updates for self.larger_model,
                 # operations are wrapped in torch.no_grad() to improve performance and reduce memory usage.
-                larger_logit, larger_autoregressive_loss = self.larger_model.logit_and_loss(x, y, True)
+                larger_hidden_states, larger_autoregressive_loss = self.larger_model.forward_and_loss(x, y, True)
             #### layer-wise loss
-            #layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
-            #### forward layer loss
-            
+            layerwise_hidden_loss = self.layerwise_hidden_loss(larger_hidden_states, smaller_hidden_states)
             #### logits loss
-            logits_loss = self.logits_loss(larger_logit, smaller_logit)
+            logits_loss = self.logits_loss(larger_hidden_states, smaller_hidden_states)
 
             #loss += smaller_logits_loss #+logits_loss + layerwise_hidden_loss 
-            #loss += smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
-            loss += smaller_autoregressive_loss + logits_loss #+ layerwise_hidden_loss 
+            loss += smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
             #print(f"loss: {loss}, rank: {self.rank}")
 
             #import pdb; pdb.set_trace() 
@@ -1228,26 +1133,24 @@ class Distiller:
             total_loss += loss
             #if self.rank == 0:
             #if self.is_local_main_process:
-           
-            # #!!! 
-            # if self.accelerator.is_local_main_process:
-            #     prog.set_description(f"current loss: {loss.item():.3f}")
-            #     #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
+            
+            if self.accelerator.is_local_main_process:
+                prog.set_description(f"current loss: {loss.item():.3f}")
+                #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
 
-            #     wandb.log(
-            #         {
-            #             "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
-            #             "logits_loss": logits_loss.item(),
-            #             "layerwise_hidden_loss": layerwise_hidden_loss.item(),
-            #             "current loss": loss.item(),
-            #             "average total_loss": total_loss.item()/self.step,
-            #         },
-            #         step=i,
-            #     )
+                wandb.log(
+                    {
+                        "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
+                        "logits_loss": logits_loss.item(),
+                        "layerwise_hidden_loss": layerwise_hidden_loss.item(),
+                        "current loss": loss.item(),
+                        "average total_loss": total_loss.item()/self.step,
+                    },
+                    step=i,
+                )
 
-            # if self.step%self.grad_step:
-            #     prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
-            # #!!! 
+            if self.step%self.grad_step:
+                prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
 
             #### Do not deelete
             self.accelerator.backward(loss)
