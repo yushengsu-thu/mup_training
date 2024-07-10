@@ -515,8 +515,8 @@ class Distiller:
         
         # self.accelerator = Accelerator(training_config)
         
-        print("Number of GPUs:", self.accelerator.state.num_processes)
-        exit()
+        #print("Number of GPUs:", self.accelerator.state.num_processes)
+        #exit()
 
         #print(self.accelerator)
         
