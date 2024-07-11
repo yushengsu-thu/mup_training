@@ -23,11 +23,11 @@ VERSION="CrystalCoder_phase1_checkpoint_055500"
 accelerate launch --config_file ../config/default_config.yaml ../code/distill_llm.py \
     --llm $LLM \
     --max_tokens 2048 \
-    --learning_rate 3e-5 \
+    --learning_rate 3e-4 \
     --weight_decay 0 \
     --batch_size 1 \
     --revision $VERSION \
-    --grad_step 64 \
+    --grad_step 1 \
     --target_dir "../checkpoint/EleutherAI/"$LLM \
     --reduction_factor 4 \
     --distill_model_config "../distill-crystalcoder-config" \

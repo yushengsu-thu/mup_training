@@ -720,8 +720,8 @@ class Distiller:
         return loss
 
     def caculate_loss(self, y_prime, y):
-        #threshold = 256
-        threshold = 10
+        threshold = 256
+        #threshold = 10
         loss = nn.MSELoss()(y_prime, y)
         if torch.isinf(loss):
             loss = torch.tensor(threshold, dtype=loss.dtype, device=loss.device)
@@ -1161,7 +1161,11 @@ class Distiller:
                 reinit=True
             )
 
-        prog = tqdm(self.loader)
+
+        if self.accelerator.is_local_main_process:
+            prog = tqdm(self.loader, bar_format="{l_bar}{bar:60}{r_bar}{bar:-60b}")
+        else:
+            prog = self.loader 
         #self.opt.zero_grad()
 
         total_loss = 0
@@ -1352,7 +1356,7 @@ class Distiller:
  
             #accumulated_loss += loss_2.item()
             #total_loss += loss.item()
-            total_loss += loss
+            #total_loss += loss
             #if self.rank == 0:
             #if self.is_local_main_process:
            
@@ -1367,17 +1371,17 @@ class Distiller:
                         "logits_loss": logits_loss.item(),
                         "layerwise_hidden_loss": layerwise_hidden_loss.item(),
                         "current loss": loss.item(),
-                        "average total_loss": total_loss.item()/self.step,
+                        #"average total_loss": total_loss.item()/self.step,
                     },
                     step=i,
                 )
 
-                # wandb.log(
-                #     {
-                #         "total_loss": total_loss.item()/self.step,
-                #     },
-                #     step=i,
-                # )
+            # wandb.log(
+            #     {
+            #         "total_loss": total_loss.item()/self.step,
+            #     },
+            #     step=i,
+            # )
                 
 
             # if self.step%self.grad_step:
@@ -1406,10 +1410,10 @@ class Distiller:
             #     prog.set_description(f"accumulated_loss: {total_loss:.3f}")
             #     accumulated_loss = 0.0
 
-        total_loss = total_loss/self.step
-        print()
-        print(f"total_loss: {total_loss:.3f}")
-        print("========================================")
+        # total_loss = total_loss/self.step
+        # print()
+        # print(f"total_loss: {total_loss:.3f}")
+        # print("========================================")
 
         
 
