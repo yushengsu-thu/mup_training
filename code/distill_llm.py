@@ -1163,7 +1163,7 @@ class Distiller:
 
 
         if self.accelerator.is_local_main_process:
-            prog = tqdm(self.loader, bar_format="{l_bar}{bar:60}{r_bar}{bar:-60b}")
+            prog = tqdm(self.loader)
         else:
             prog = self.loader 
         #self.opt.zero_grad()
@@ -1361,7 +1361,11 @@ class Distiller:
             #if self.is_local_main_process:
            
             if self.accelerator.is_local_main_process:
-                prog.set_description(f"current loss: {loss.item():.3f}")
+                prog.set_description("Progress")
+                prog.refresh()
+                print(f"\rCurrent loss: {loss:.3f}          ", end="")
+                #prog.set_description(f"current loss: {loss.item():.3f}")
+
                 #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
                 #prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
 
