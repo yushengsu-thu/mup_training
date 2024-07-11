@@ -7,8 +7,32 @@ print(f"==Test==")
 print("\n")
 
 
+print(self.larger_hook_forward_dict.keys())
 
 
+
+#input[0].data = _subsample_embeddings_dimlast(modified_input, input[0], self.smaller_model.reduction_factor)
+#print(input)
+
+# out = _subsample_embeddings_dimlast(modified_input, input_copy, self.smaller_model.reduction_factor)
+# print(modified_input[0,0,:12])
+# print(out[0,0,:12])
+# print(input[0][0,0,:12])
+# print()
+
+
+# modified_input = self.larger_hook_forward_dict[module_name][0]
+# print(modified_input, modified_input.shape, type(modified_input))
+
+#input_copy = input[0].clone() 
+#print(input_copy, input_copy.shape, type(input_copy))
+# input[0].data = _subsample_embeddings_dimlast(modified_input, input, self.smaller_model.reduction_factor)  
+# print(torch.equal(input_copy, input[0]))
+
+
+# for k, v in self.larger_hook_forward_dict.items():
+#     print(len(v[0]), type(v[0]), v[0])
+    #exit()
 
 
 # from accelerate import Accelerator
@@ -82,11 +106,11 @@ print("\n")
 # #     print(k, len(v))
 
 
-for module_name, module in model.named_modules():
-    #hook = module.register_forward_hook(self._forward_hook(module_name, model_name, is_modifiy))
-    print(module_name, module)
-    #hook = module.register_forward_pre_hook(self.forward_pre_hook(module_name, model_name, is_modifiy))
-    #total_hook_list.append(hook)
+# for module_name, module in model.named_modules():
+#     #hook = module.register_forward_hook(self._forward_hook(module_name, model_name, is_modifiy))
+#     print(module_name, module)
+#     #hook = module.register_forward_pre_hook(self.forward_pre_hook(module_name, model_name, is_modifiy))
+#     #total_hook_list.append(hook)
 
 
 '''
