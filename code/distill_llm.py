@@ -61,7 +61,7 @@ import inspect
 # split data, 1:9
 # add ppl
 
-PROJECT="mup_training"
+PROJECT="mup_training_2024_07_11"
 ENTITY="mbzuai-llm"
 
 
@@ -1037,7 +1037,7 @@ class Distiller:
                     if re.match(pattern, module_name):
                         # downsample
                         #import pdb; pdb.set_trace()
-
+                        #import pdb; pdb.set_trace()
                         modified_input = self.larger_hook_forward_dict[module_name][0]
                         #input_copy = input[0].clone() 
                         #iprint(input_copy.shape)
@@ -1343,8 +1343,8 @@ class Distiller:
 
             #loss = smaller_logits_loss #+logits_loss + layerwise_hidden_loss 
             #loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
-            #loss = smaller_autoregressive_loss + logits_loss #+ layerwise_hidden_loss 
-            loss = layerwise_hidden_loss 
+            loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
+            #loss = layerwise_hidden_loss 
             #print(f"loss: {loss}, rank: {self.rank}")
 
             #import pdb; pdb.set_trace() 
@@ -1359,7 +1359,7 @@ class Distiller:
             if self.accelerator.is_local_main_process:
                 prog.set_description(f"current loss: {loss.item():.3f}")
                 #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
-                prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
+                #prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
 
                 wandb.log(
                     {
@@ -1382,6 +1382,7 @@ class Distiller:
 
             # if self.step%self.grad_step:
             #     prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
+
 
             #### Do not deelete
             self.accelerator.backward(loss)

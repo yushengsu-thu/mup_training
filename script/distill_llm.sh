@@ -27,7 +27,7 @@ accelerate launch --config_file ../config/default_config.yaml ../code/distill_ll
     --weight_decay 0 \
     --batch_size 1 \
     --revision $VERSION \
-    --grad_step 4 \
+    --grad_step 64 \
     --target_dir "../checkpoint/EleutherAI/"$LLM \
     --reduction_factor 4 \
     --distill_model_config "../distill-crystalcoder-config" \

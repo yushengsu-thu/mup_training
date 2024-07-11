@@ -7,7 +7,13 @@ print(f"==Test==")
 print("\n")
 
 
-print(self.larger_hook_forward_dict.keys())
+#print(self.larger_hook_forward_dict.keys())
+
+
+print(len(self.larger_hook_forward_dict[module_name][0]))
+
+
+#for k,v in self.larger_hook_forward_dict[module_name].items():
 
 
 
