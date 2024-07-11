@@ -58,5 +58,5 @@ Excute `bash` and follow the instruction to set the training config and run
 bash run.sh
 ```
 You can find the training log here:
-- wandb: ⭐️ View project: `https://wandb.ai/mbzuai-llm/mup_training`
-- wandb: 🚀 View run: `https://wandb.ai/mbzuai-llm/mup_training/runs/vf4fubed`
+- wandb: ⭐️ View project at: `https://wandb.ai/mbzuai-llm/mup_training_2024_07_11`
+- wandb: 🚀 View run at: `https://wandb.ai/mbzuai-llm/mup_training_2024_07_11/runs/9ssbv51q`

@@ -20,6 +20,9 @@ VERSION="CrystalCoder_phase1_checkpoint_055500"
 
 #python3 ../code/distill_llm.py \
 #CUDA_VISIBLE_DEVICES=0
+
+#batch_szie = grad_step * number_of_GPUs
+
 accelerate launch --config_file ../config/default_config.yaml ../code/distill_llm.py \
     --llm $LLM \
     --max_tokens 2048 \
@@ -27,7 +30,7 @@ accelerate launch --config_file ../config/default_config.yaml ../code/distill_ll
     --weight_decay 0 \
     --batch_size 1 \
     --revision $VERSION \
-    --grad_step 1 \
+    --grad_step 4 \
     --target_dir "../checkpoint/EleutherAI/"$LLM \
     --reduction_factor 4 \
     --distill_model_config "../distill-crystalcoder-config" \

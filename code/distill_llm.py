@@ -39,7 +39,7 @@ import bitsandbytes as bnb
 from datasets import load_dataset
 from transformers import GPTNeoXForCausalLM
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXAttention
-from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForCausalLM, get_scheduler
 import argparse
 import os
 from multiprocessing import cpu_count
@@ -57,6 +57,7 @@ import re
 import yaml
 from accelerate import FullyShardedDataParallelPlugin, DistributedType
 import inspect
+from collections import defaultdict
 
 # split data, 1:9
 # add ppl
@@ -519,9 +520,13 @@ class Distiller:
         #     #deepspeed_plugin = ,
         # )
 
+        #print(self.grad_step)
+        #exit()
+        
         self.accelerator = Accelerator(
             fsdp_plugin = training_config.get('fsdp_plugin'),
             mixed_precision = training_config.get('mixed_precision'),
+            gradient_accumulation_steps = self.grad_step,
         )
         
         # self.accelerator = Accelerator(training_config)
@@ -548,6 +553,12 @@ class Distiller:
         '''
         
         ##### Fix the schduler here !!!!!
+        # lr_scheduler = get_scheduler(
+        #     "linear",
+        #     optimizer=optimizer,
+        #     num_warmup_steps=0,
+        #     num_training_steps=num_training_steps
+        # )
         
         self.larger_model, self.smaller_model, self.opt, self.loader= self.accelerator.prepare(
             self.larger_model, self.smaller_model, self.opt, self.loader
@@ -720,11 +731,13 @@ class Distiller:
         return loss
 
     def caculate_loss(self, y_prime, y):
-        threshold = 256
-        #threshold = 10
+        #threshold = 256
+        threshold = 32
         loss = nn.MSELoss()(y_prime, y)
         if torch.isinf(loss):
             loss = torch.tensor(threshold, dtype=loss.dtype, device=loss.device)
+        if loss.item() > threshold:
+            loss = torch.clamp(loss, min=0, max=threshold)
         return loss
         #clipped_loss = torch.clamp(loss, min=None, max=threshold)
         #print(clipped_loss)
@@ -1138,6 +1151,22 @@ class Distiller:
             raise ValueError(f"Error file: distill_llm.py, Invalid number: line 567+-")
          
 
+    def get_grad_norm_per_layer(self, model):
+        grad_norms = {}
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                grad_norms[name] = torch.norm(param.grad.detach(), 2).item()
+        return grad_norms
+
+    def get_avg_grad_norm_per_layer(self, model):
+        grad_norms = defaultdict(list)
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                #layer_name = name.split('.')[2]
+                layer_name = name
+                grad_norms[layer_name].append(torch.norm(param.grad.detach(), 2).item())
+        avg_grad_norms = {layer: sum(norms) / len(norms) for layer, norms in grad_norms.items()}
+        return avg_grad_norms
          
          
     def distill(self):
@@ -1163,7 +1192,7 @@ class Distiller:
 
 
         if self.accelerator.is_local_main_process:
-            prog = tqdm(self.loader)
+            prog = tqdm(self.loader, bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}")
         else:
             prog = self.loader 
         #self.opt.zero_grad()
@@ -1211,213 +1240,90 @@ class Distiller:
             #     torch.cuda.empty_cache()
             #     print(f"2nd: {torch.cuda.memory_summary(device=None, abbreviated=False)}")
 
-            loss = 0
-            self.smaller_backward_loss = 0
-            self.smaller_forward_loss = 0
-            
-
-            #if i == stop_batch:
-            #    break
-            self.step = i + 1
-
-            batch = batch.to(self.device)
-            x, y = batch[:, :-1], batch[:, 1:]
-            #output_large = self.larger_model.forward(x)
-           
-            # ###Backward loss### : smaller_model_next_token_prediction_loss (o),  self.smaller_backward_los (x)
-            # # collect normal larger's backward grad
-            # self.register_hook(self.larger_model.model, "larger", "backward", False, False)
-            # larger_model_next_token_prediction_loss = self.larger_model.next_token_prediction_loss(x, y)
-            # #larger_model_next_token_prediction_loss.backward()
-            # self.accelerator.backward(larger_model_next_token_prediction_loss)
-            # # collect downsample backward grad (with larger's downsampled grad)
-            # self.register_hook(self.smaller_model.model, "smaller", "backward", True, False)
-            # smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
-            # #smaller_model_next_token_prediction_loss.backward()
-            # self.accelerator.backward(smaller_model_next_token_prediction_loss)
-            # self.opt.zero_grad()
-            # del smaller_model_next_token_prediction_loss
-            # self.larger_hook_backward_dict.clear()
-            # self.remove_hook(self.smaller_backward_hook_list)
-            # # collect normal smaller's backward grad and get the next_token_prediction_loss
-            # self.register_hook(self.smaller_model.model, "smaller", "backward", False, True)
-            # smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
-            # ###############
-            # ###############
-            # #self.accelerator.backward(self.smaller_backward_loss)
-            # self.accelerator.backward(smaller_model_next_token_prediction_loss)
-            # ###############
-            # ###############
-            # self.smaller_hook_backward_dict.clear()
-            # self.remove_hook(self.smaller_backward_hook_list)
-             
-            
-            # loss += smaller_model_next_token_prediction_loss #+ self.smaller_backward_loss
-
-
-            #### above already confirmed #####
-
-            # Forward_pass: delete this one
-            # ###Forwardward loss### : smaller_model_next_token_prediction_loss (o), self.smaller_forward_loss (..) 
-            # # collect normal larger's forward 
-            # self.register_hook(self.larger_model.model, "larger", "forward", False, False)
-            # larger_model_hidden_state = self.larger_model.forward(x)
-            # # collect downsample forwardward grad (with larger's downsampled)
-            # self.register_hook(self.smaller_model.model, "smaller", "forward", True, False)
-            # smaller_model_hidden_state = self.smaller_model.forward(x)
-            # self.larger_hook_forward_dict.clear()
-            # self.remove_hook(self.larger_forward_hook_list)
-            # self.remove_hook(self.smaller_forward_hook_list)
-            # # collect normal smaller's backward grad and get the next_token_prediction_loss
-            # self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
-            # smaller_model_next_token_prediction_loss = self.smaller_model.next_token_prediction_loss(x, y)
-            # #smaller_model_next_token_prediction_loss.backward()
-            # self.accelerator.backward(smaller_model_next_token_prediction_loss, retain_graph=True)
-            # self.smaller_hook_forward_dict.clear()
-            # self.remove_hook(self.smaller_forward_hook_list)
-            # self.accelerator.backward(self.smaller_forward_loss, retain_graph=True) 
-            # ## loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
-            # print(f"smaller_forward_loss: {self.smaller_forward_loss}")
-            # print(f"self.smaller_forward_loss: {self.smaller_forward_loss}")
-            # loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
-
-            # #Forward_pass: Keep this one 
-            # ############# (Problem: loss becomes larger? from 0 to inf ?? why?)
-            # ###Forwardward loss###: smaller_model_next_token_prediction_loss (o), self.smaller_forward_loss (..) 
-            # # collect normal larger's forward 
-            # self.smaller_forward_loss = 0
-            # self.register_hook(self.larger_model.model, "larger", "forward", False, False)
-            # larger_model_hidden_state = self.larger_model.forward(x, True)
-            # # collect downsample forwardward grad (with larger's downsampled)
-            # self.register_hook(self.smaller_model.model, "smaller", "forward", True, False)
-            # smaller_model_hidden_state_downsampled = self.smaller_model.forward(x, False)
-            # self.larger_hook_forward_dict.clear()
-            # self.remove_hook(self.larger_forward_hook_list)
-            # self.remove_hook(self.smaller_forward_hook_list)
-            # # collect normal smaller's backward grad and get the next_token_prediction_loss
-            # self.register_hook(self.smaller_model.model, "smaller", "forward", False, True)
-            # smaller_model_hidden_state = self.smaller_model.forward(x, True)
-            # #print("======")
-            # #smaller_model_next_token_prediction_loss.backward()
-            # self.smaller_hook_forward_dict.clear()
-            # self.remove_hook(self.smaller_forward_hook_list)
-            # ## loss += smaller_model_next_token_prediction_loss + self.smaller_forward_loss
-            # print(f"smaller_forward_loss: {self.smaller_forward_loss}")
-            # loss += self.smaller_forward_loss
-            #############
-            
-
-            # #logits loss : logits_loss (..) 
-            # logits_loss = self.caculate_loss(larger_model_hidden_state.logits, smaller_model_hidden_state.logits)
-            # self.accelerator.backward(logits_loss) 
-            # loss += logits_loss
-
-            
-            # # layer-wise distribution loss : distribution loss (..) 
-            # layerwise_loss = self.layerwise_hidden_loss(larger_model_hidden_state, smaller_model_hidden_state)
-            # #self.accelerator.backward(layerwise_loss)  
-            # loss += layerwise_loss
-            
-
-            ###start from here: 
-            with torch.no_grad():
-                # Since we do not require gradient calculations or parameter updates for self.larger_model,
-                # operations are wrapped in torch.no_grad() to improve performance and reduce memory usage.
+            with self.accelerator.accumulate(self.smaller_model):
                 
-                ## Collect larger_llm's hidden states
-                self.register_pre_forward_hook(self.larger_model.model, "larger", False) 
-                larger_logit, larger_autoregressive_loss = self.larger_model.logit_and_loss(x, y, True)
+                loss = 0
+                #self.smaller_backward_loss = 0
+                #self.smaller_forward_loss = 0
                 
-                ## Collect smaller_llm's hidden states (downsamples)
-                self.register_pre_forward_hook(self.smaller_model.model, "smaller", True) 
-                smaller_hidden_state_downsampled = self.smaller_model.hidden(x, True)
-                self.remove_hook(self.larger_forward_hook_list)
-                self.remove_hook(self.smaller_forward_hook_list)
-                self.larger_hook_forward_dict.clear()
-                self.smaller_hook_forward_dict.clear()
+                self.step = i + 1
+
+                batch = batch.to(self.device)
+                x, y = batch[:, :-1], batch[:, 1:]
+                #output_large = self.larger_model.forward(x)
+            
+                ###start from here: 
+                with torch.no_grad():
+                    # Since we do not require gradient calculations or parameter updates for self.larger_model,
+                    # operations are wrapped in torch.no_grad() to improve performance and reduce memory usage.
+                    
+                    ## Collect larger_llm's hidden states
+                    self.register_pre_forward_hook(self.larger_model.model, "larger", False) 
+                    larger_logit, larger_autoregressive_loss = self.larger_model.logit_and_loss(x, y, True)
+                    
+                    ## Collect smaller_llm's hidden states (downsamples)
+                    self.register_pre_forward_hook(self.smaller_model.model, "smaller", True) 
+                    smaller_hidden_state_downsampled = self.smaller_model.hidden(x, True)
+                    self.remove_hook(self.larger_forward_hook_list)
+                    self.remove_hook(self.smaller_forward_hook_list)
+                    self.larger_hook_forward_dict.clear()
+                    self.smaller_hook_forward_dict.clear()
+            
              
-            #### forward layer loss
-            smaller_logit, smaller_hidden_state, smaller_autoregressive_loss = self.smaller_model.logit_and_hidden_and_loss(x, y, True)
+                #### forward layer loss
+                smaller_logit, smaller_hidden_state, smaller_autoregressive_loss = self.smaller_model.logit_and_hidden_and_loss(x, y, True)
 
-            #### layer-wise loss
-            layerwise_hidden_loss = self.layerwise_hidden_loss(smaller_hidden_state, smaller_hidden_state_downsampled)
+                #### layer-wise loss
+                layerwise_hidden_loss = self.layerwise_hidden_loss(smaller_hidden_state, smaller_hidden_state_downsampled)
 
-            #### logits loss
-            logits_loss = self.logits_loss(larger_logit, smaller_logit)
+                #### logits loss
+                logits_loss = self.logits_loss(larger_logit, smaller_logit)
 
-            #loss = smaller_logits_loss #+logits_loss + layerwise_hidden_loss 
-            #loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
-            loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
-            #loss = layerwise_hidden_loss 
-            #print(f"loss: {loss}, rank: {self.rank}")
+                #loss = smaller_logits_loss #+logits_loss + layerwise_hidden_loss 
+                #loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
+                loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
+                #loss = layerwise_hidden_loss 
+                #print(f"loss: {loss}, rank: {self.rank}")
 
-            #import pdb; pdb.set_trace() 
-             
- 
-            #accumulated_loss += loss_2.item()
-            #total_loss += loss.item()
-            #total_loss += loss
-            #if self.rank == 0:
-            #if self.is_local_main_process:
-           
-            if self.accelerator.is_local_main_process:
-                prog.set_description("Progress")
-                prog.refresh()
-                print(f"\rCurrent loss: {loss:.3f}          ", end="")
-                #prog.set_description(f"current loss: {loss.item():.3f}")
-
-                #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
-                #prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
-
-                wandb.log(
-                    {
-                        "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
-                        "logits_loss": logits_loss.item(),
-                        "layerwise_hidden_loss": layerwise_hidden_loss.item(),
-                        "current loss": loss.item(),
-                        #"average total_loss": total_loss.item()/self.step,
-                    },
-                    step=i,
-                )
-
-            # wandb.log(
-            #     {
-            #         "total_loss": total_loss.item()/self.step,
-            #     },
-            #     step=i,
-            # )
+                #import pdb; pdb.set_trace() 
                 
+    
+                #accumulated_loss += loss_2.item()
+                #total_loss += loss.item()
+                #total_loss += loss
+                #if self.rank == 0:
+                #if self.is_local_main_process:
 
-            # if self.step%self.grad_step:
-            #     prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
+                self.accelerator.backward(loss)
+                
+                if self.accelerator.sync_gradients:
+                    #if self.accelerator.is_local_main_process:
+                    #self.accelerator.print(f"current loss: {loss.item():.3f}")
+                    
+                    #accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0) 
+                    
+                    if self.accelerator.is_local_main_process:
+                        prog.set_description(f"current loss: {loss.item():.3f}")
+                        #prog.set_description(f"current loss: {layerwise_hidden_loss.item():.3f}")
+                        #prog.set_description(f"average total_loss: {total_loss.item()/self.step:.3f}")
+                    
+                        loss_dict =  {
+                                "smaller_autoregressive_loss": smaller_autoregressive_loss.item(),
+                                "logits_loss": logits_loss.item(),
+                                "layerwise_hidden_loss": layerwise_hidden_loss.item(),
+                                "current loss": loss.item(),
+                        }
+
+                        avg_grad_norms = self.get_avg_grad_norm_per_layer(self.smaller_model.model)
+                        layer_names = {f"layer_{i}": layer for i, (layer, _) in enumerate(avg_grad_norms.items(), start=1)}
+                        grad_norm_dict = {f"grad_norms/{layer}": norm for layer, norm in avg_grad_norms.items()}
+                        wandb.log({**loss_dict, **grad_norm_dict}, step=i)
 
 
-            #### Do not deelete
-            self.accelerator.backward(loss)
-            #loss.backward()
-
-            #torch.nn.utils.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
-            #torch.nn.utils.clip_grad_value_(self.smaller_model.model.parameters(), clip_value=5.0)
-            #torch.nn.utils.clip_grad_value_(self.smaller_model.model.parameters(), clip_value=1.0)
-            #self.accelerator.clip_grad_norm_(self.smaller_model.model.parameters(), max_norm=1.0)
-
-            ### Already set in line 445: gradient_accumulation_steps=self.grad_step
-            # if self.step%self.grad_step == 0:
-            #     self.opt.step()
-            #     self.opt.zero_grad()
-
-
-            # continue
-
-            # if (i + 1) % self.grad == 0:
-            #     self.opt.step()
-            #     prog.set_description(f"accumulated_loss: {total_loss:.3f}")
-            #     accumulated_loss = 0.0
-
-        # total_loss = total_loss/self.step
-        # print()
-        # print(f"total_loss: {total_loss:.3f}")
-        # print("========================================")
+                self.opt.step()
+                #lr_scheduler.step()
+                self.opt.zero_grad()
+                
 
         
 
