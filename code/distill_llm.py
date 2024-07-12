@@ -18,6 +18,12 @@
 # split into the layer to caculate w's bp and fp
 # Given input, output; grad_output, grad_input, dw (value), 
 
+################
+#Fix issue:
+#Note (ask to revise it for me): Another thing is the indices in subsample, the current one is probably okay, but ideally we want to pick [i for i in range(matrix_original.size(0)) if i % (reduction_factor * 2) < 2], e.g., when reduction_factor=2, the indices would be [0, 1, 4, 5, 8, 9, ...]
+################
+
+
 from ast import mod
 import copy
 #import imp
