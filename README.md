@@ -57,6 +57,11 @@ Excute `bash` and follow the instruction to set the training config and run
 ```bash
 bash run.sh
 ```
+2024/7/11
 You can find the training log here:
 - wandb: ⭐️ View project at: `https://wandb.ai/mbzuai-llm/mup_training_2024_07_11`
 - wandb: 🚀 View run at: `https://wandb.ai/mbzuai-llm/mup_training_2024_07_11/runs/9ssbv51q`
+
+2024/7/12
+- wandb: ⭐️ View project at: `https://wandb.ai/mbzuai-llm/mup_training_2024_07_12`
+- wandb: 🚀 View run at: `https://wandb.ai/mbzuai-llm/mup_training_2024_07_12/runs/809y4zfj`

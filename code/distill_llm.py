@@ -15,7 +15,7 @@
 ##to: lm_logits = lm_logits * torch.tensor(float(self.output_logits_scale), dtype=lm_logits.dtype, device=lm_logits.device
 ###############
 
-# split into the layer to caculate w's bp and fp
+# split into the layer to calculate w's bp and fp
 # Given input, output; grad_output, grad_input, dw (value), 
 
 ################
@@ -68,7 +68,7 @@ from collections import defaultdict
 # split data, 1:9
 # add ppl
 
-PROJECT="mup_training_2024_07_11"
+PROJECT="mup_training_2024_07_12"
 ENTITY="mbzuai-llm"
 
 
@@ -662,7 +662,7 @@ class Distiller:
         mean_large = large_hidden_states.mean(dim=(1, 2, 3))
         mean_small = small_hidden_states.mean(dim=(1, 2, 3))
         #loss = nn.MSELoss(reduction="sum")(mean_large, mean_small)
-        loss = self.caculate_loss(mean_large, mean_small)
+        loss = self.calculate_loss(mean_large, mean_small)
         return loss
 
     # def compute_kl_divergence_distance(self, large_hidden_states, small_hidden_states):
@@ -692,7 +692,7 @@ class Distiller:
     #     std_small = torch.clamp(std_small, min=epsilon)
     #     mean_small = torch.clamp(mean_small, min=1e-6)
     #     dist_small = Normal(mean_small, std_small)
-    #     # caculate KL by layer
+    #     # calculate KL by layer
     #     #kl_div = kl_divergence(dist_large, dist_small).mean(dim=(1, 2))
     #     kl_div = kl_divergence(dist_large, dist_small).sum()
 
@@ -711,7 +711,7 @@ class Distiller:
         std_small = torch.clamp(std_small, min=epsilon)
         #kl_div = kl_divergence(std_large, std_small).sum()
         #loss = nn.MSELoss(reduction="sum")(std_large, std_small)
-        loss = self.caculate_loss(std_large, std_small)
+        loss = self.calculate_loss(std_large, std_small)
         return loss
 
 
@@ -727,27 +727,38 @@ class Distiller:
         std_loss = self.compute_std_loss(large_hidden_states, small_hidden_states)
         #print(f"mean_loss: {mean_loss}, std_loss: {std_loss}")
         loss = mean_loss + std_loss
-        #loss = self.caculate_loss(large_hidden_states, small_hidden_states)
+        #loss = self.calculate_loss(large_hidden_states, small_hidden_states)
         return loss
 
     def logits_loss(self, large_logit, small_logit):
         #large_logits = output_large.logits
         #small_logits = output_small.logits
-        loss = self.caculate_loss(large_logit, small_logit)
+        loss = self.calculate_loss(large_logit, small_logit)
         return loss
 
-    def caculate_loss(self, y_prime, y):
-        #threshold = 256
-        threshold = 32
+    # def calculate_loss(self, y_prime, y):
+    #     #threshold = 256
+    #     threshold = 64
+    #     loss = nn.MSELoss()(y_prime, y)
+    #     if torch.isinf(loss):
+    #         loss = torch.tensor(threshold, dtype=loss.dtype, device=loss.device)
+    #     if loss.item() > threshold:
+    #         loss = torch.clamp(loss, min=0, max=threshold)
+    #     return loss
+    #     #clipped_loss = torch.clamp(loss, min=None, max=threshold)
+    #     #print(clipped_loss)
+    #     #return clipped_loss
+
+    def calculate_loss(self, y_prime, y):
+        threshold = 256  
         loss = nn.MSELoss()(y_prime, y)
+        
         if torch.isinf(loss):
-            loss = torch.tensor(threshold, dtype=loss.dtype, device=loss.device)
-        if loss.item() > threshold:
-            loss = torch.clamp(loss, min=0, max=threshold)
+            return torch.tensor(threshold, dtype=loss.dtype, device=loss.device)
+        # loss = torch.where(base_loss > threshold, 
+        #                 threshold + torch.log1p(base_loss - threshold), 
+        #                 base_loss) 
         return loss
-        #clipped_loss = torch.clamp(loss, min=None, max=threshold)
-        #print(clipped_loss)
-        #return clipped_loss
    
     
     '''
@@ -1157,14 +1168,14 @@ class Distiller:
             raise ValueError(f"Error file: distill_llm.py, Invalid number: line 567+-")
          
 
-    def get_grad_norm_per_layer(self, model):
+    def get_grad_norm_per_parameters(self, model):
         grad_norms = {}
         for name, param in model.named_parameters():
             if param.grad is not None:
                 grad_norms[name] = torch.norm(param.grad.detach(), 2).item()
         return grad_norms
 
-    def get_avg_grad_norm_per_layer(self, model):
+    def get_avg_grad_norm_per_module(self, model):
         grad_norms = defaultdict(list)
         for name, param in model.named_parameters():
             if param.grad is not None:
@@ -1173,7 +1184,59 @@ class Distiller:
                 grad_norms[layer_name].append(torch.norm(param.grad.detach(), 2).item())
         avg_grad_norms = {layer: sum(norms) / len(norms) for layer, norms in grad_norms.items()}
         return avg_grad_norms
-         
+
+
+    def get_grad_norm_per_layer(self, model):
+        grad_norms = {}
+        for name, module in model.named_modules():
+            if isinstance(module, nn.TransformerEncoderLayer) or isinstance(module, nn.TransformerDecoderLayer):
+                layer_grad_norm = 0
+                for param in module.parameters():
+                    if param.grad is not None:
+                        layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
+                grad_norms[name] = math.sqrt(layer_grad_norm)
+        return grad_norms
+
+
+    # def get_avg_grad_norm_per_layer(self, model):
+    #     # transformer.h.x 
+    #     # pattern = r"transformer\.h\.\d{1,2}$"
+    #     grad_norms = defaultdict(list)
+    #     for name, param in model.named_parameters():
+    #         if param.grad is not None:
+    #             #layer_name = name.split('.')[2]
+    #             layer_name = name
+    #             grad_norms[layer_name].append(torch.norm(param.grad.detach(), 2).item())
+    #     avg_grad_norms = {layer: sum(norms) / len(norms) for layer, norms in grad_norms.items()}
+    #     return avg_grad_norms
+    
+    
+    def get_avg_grad_norm_per_layer(self, model):
+        grad_norms = {}
+        pattern_weight = r'\w+\.weight'
+        pattern_bias = r'\w+\.bias'
+        pattern = r"^transformer\.h\.\d{1,2}(?:\..+)?$"
+        #pattern = r"^transformer\.h\.\d{1,2}$"
+        for name, module in model.named_modules():
+            print(name)
+            layer_grad_norm = 0
+            layer_name = ""
+            if name == "transformer.wte": 
+                layer_name = name
+            elif re.match(pattern, name):
+                layer_name = '.'.join(name.split('.')[:3])
+            else:
+                continue
+                #print(name)
+                #raise ValueError("Wrong") 
+            for param in module.parameters():
+                if re.match(pattern_weight, name) or re.match(pattern_bias, name):
+                    if param.grad is not None:
+                        layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
+                grad_norms[layer_name] = math.sqrt(layer_grad_norm)
+        #print(grad_norms)
+        return grad_norms
+     
          
     def distill(self):
         #Currently logged in as: yusheng-su (mbzuai-llm). Use `wandb login --relogin` to force relogin
@@ -1287,7 +1350,8 @@ class Distiller:
 
                 #loss = smaller_logits_loss #+logits_loss + layerwise_hidden_loss 
                 #loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
-                loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
+                #loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss 
+                loss = smaller_autoregressive_loss + logits_loss + layerwise_hidden_loss/100 
                 #loss = layerwise_hidden_loss 
                 #print(f"loss: {loss}, rank: {self.rank}")
 
@@ -1320,6 +1384,9 @@ class Distiller:
                                 "current loss": loss.item(),
                         }
 
+                        #import pdb; pdb.set_trace()
+                        #exit()
+                            
                         avg_grad_norms = self.get_avg_grad_norm_per_layer(self.smaller_model.model)
                         layer_names = {f"layer_{i}": layer for i, (layer, _) in enumerate(avg_grad_norms.items(), start=1)}
                         grad_norm_dict = {f"grad_norms/{layer}": norm for layer, norm in avg_grad_norms.items()}

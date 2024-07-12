@@ -7,10 +7,94 @@ print(f"==Test==")
 print("\n")
 
 
+
+
+def get_avg_grad_norm_per_layer(model):
+    grad_norms = {}
+    pattern_weight = r'\w+\.weight'
+    pattern_bias = r'\w+\.bias'
+    pattern = r"^transformer\.h\.\d{1,2}(?:\..+)?$"
+    #pattern = r"^transformer\.h\.\d{1,2}$"
+    for name, module in model.named_modules():
+        print(name)
+        layer_grad_norm = 0
+        layer_name = ""
+        if name == "transformer.wte": 
+            layer_name = name
+        elif re.match(pattern, name):
+            layer_name = '.'.join(name.split('.')[:3])
+        else:
+            continue
+            #print(name)
+            #raise ValueError("Wrong") 
+
+        for param in module.parameters():
+            if re.match(pattern_weight, name) or re.match(pattern_bias, name):
+                if param.grad is not None:
+                    layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
+            grad_norms[layer_name] = math.sqrt(layer_grad_norm)
+    print(grad_norms)
+    return grad_norms
+
+
+# def get_avg_grad_norm_per_layer(self, model):
+#     # transformer.h.x 
+#     # pattern = r"transformer\.h\.\d{1,2}$"
+#     grad_norms = defaultdict(list)
+#     for name, param in model.named_parameters():
+#         if param.grad is not None:
+#             #layer_name = name.split('.')[2]
+#             layer_name = name
+#             grad_norms[layer_name].append(torch.norm(param.grad.detach(), 2).item())
+#     avg_grad_norms = {layer: sum(norms) / len(norms) for layer, norms in grad_norms.items()}
+#     return avg_grad_norms
+
+
+# def get_avg_grad_norm_per_layer(model):
+#     # transformer.h.x 
+#     # pattern = r"transformer\.h\.\d{1,2}$"
+#     pattern = r"^transformer\.h\.\d{1,2}(?:\..+)?$"
+#     grad_norms = defaultdict(list)
+#     #pattern = r"transformer\.h\.\d{1,2}$"
+#     layer_name = ""
+#     for name, param in model.named_parameters():
+#         if name == "transformer.wte.weight":
+#             layer_name = name
+#             layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
+#             grad_norms[layer_name] = math.sqrt(layer_grad_norm)
+#         else:
+#             if re.match(pattern, name):
+#                 layer_name = '.'.join(name.split('.')[:2])
+#                 layer_grad_norm = 0
+#             elif "transformer.ln_f" in name:
+#                 layer_name = "transformer.ln_f"
+#                 layer_grad_norm = 0
+#             else:
+#                 print("Wrong")
+                
+#             if param.grad is not None:
+#                 #layer_name = name.split('.')[2]
+#                 #layer_name = name
+#                 #grad_norms[layer_name].append(torch.norm(param.grad.detach(), 2).item())
+#                 layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
+#     avg_grad_norms = {layer: sum(norms) / len(norms) for layer, norms in grad_norms.items()}
+#     return avg_grad_norms
+
+
+
+# def get_avg_grad_norm_per_layer(model):
+#     for n, p in  
+
+
+
+get_avg_grad_norm_per_layer(self.smaller_model.model)
+#avg_grad_norms = self.get_avg_grad_norm_per_layer(self.smaller_model.model)
+
+
 #print(self.larger_hook_forward_dict.keys())
 
 
-print(len(self.larger_hook_forward_dict[module_name][0]))
+#print(len(self.larger_hook_forward_dict[module_name][0]))
 
 
 #for k,v in self.larger_hook_forward_dict[module_name].items():
