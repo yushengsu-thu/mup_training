@@ -7,34 +7,58 @@ print(f"==Test==")
 print("\n")
 
 
+grad_norms = {}
+pattern = r"^transformer\.h\.\d{1,2}(?:\..+)?$"
+for name, module in model.named_modules():
+    layer_grad_norm = 0
+    layer_name = ""
+    # print(name)
+    if name == "transformer.wte": 
+        layer_name = name
+    elif re.match(pattern, name):
+        layer_name = '.'.join(name.split('.')[:3])
+    else:
+        continue
+    for param in module.parameters():
+        if param.grad is not None:
+            #layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
+            if layer_name not in grad_norms:
+                grad_norms[layer_name] = [torch.norm(param.grad.detach(), 2).item()]
+            else:
+                grad_norms[layer_name].append(torch.norm(param.grad.detach(), 2).item())
+avg_grad_norms = {layer: sum(norms) / len(norms) for layer, norms in grad_norms.items()}
 
 
-def get_avg_grad_norm_per_layer(model):
-    grad_norms = {}
-    pattern_weight = r'\w+\.weight'
-    pattern_bias = r'\w+\.bias'
-    pattern = r"^transformer\.h\.\d{1,2}(?:\..+)?$"
-    #pattern = r"^transformer\.h\.\d{1,2}$"
-    for name, module in model.named_modules():
-        print(name)
-        layer_grad_norm = 0
-        layer_name = ""
-        if name == "transformer.wte": 
-            layer_name = name
-        elif re.match(pattern, name):
-            layer_name = '.'.join(name.split('.')[:3])
-        else:
-            continue
-            #print(name)
-            #raise ValueError("Wrong") 
 
-        for param in module.parameters():
-            if re.match(pattern_weight, name) or re.match(pattern_bias, name):
-                if param.grad is not None:
-                    layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
-            grad_norms[layer_name] = math.sqrt(layer_grad_norm)
-    print(grad_norms)
-    return grad_norms
+#print(grad_norms)
+print(avg_grad_norms)
+
+
+# def get_avg_grad_norm_per_layer(model):
+#     grad_norms = {}
+#     pattern_weight = r'\w+\.weight'
+#     pattern_bias = r'\w+\.bias'
+#     pattern = r"^transformer\.h\.\d{1,2}(?:\..+)?$"
+#     #pattern = r"^transformer\.h\.\d{1,2}$"
+#     for name, module in model.named_modules():
+#         print(name)
+#         layer_grad_norm = 0
+#         layer_name = ""
+#         if name == "transformer.wte": 
+#             layer_name = name
+#         elif re.match(pattern, name):
+#             layer_name = '.'.join(name.split('.')[:3])
+#         else:
+#             continue
+#             #print(name)
+#             #raise ValueError("Wrong") 
+#         for param in module.parameters():
+#             if re.match(pattern_weight, name) or re.match(pattern_bias, name):
+#                 if param.grad is not None:
+#                     layer_grad_norm += torch.norm(param.grad.detach(), 2).item() ** 2
+#             grad_norms[layer_name] = math.sqrt(layer_grad_norm)
+#     #print(grad_norms)
+#     return grad_norms
 
 
 # def get_avg_grad_norm_per_layer(self, model):
@@ -87,7 +111,7 @@ def get_avg_grad_norm_per_layer(model):
 
 
 
-get_avg_grad_norm_per_layer(self.smaller_model.model)
+#get_avg_grad_norm_per_layer(self.smaller_model.model)
 #avg_grad_norms = self.get_avg_grad_norm_per_layer(self.smaller_model.model)
 
 
